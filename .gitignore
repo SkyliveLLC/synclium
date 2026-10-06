@@ -1,0 +1,16 @@
+node_modules/
+.DS_Store
+
+# Build output (npm run build / build:dev)
+extension/dist/
+extension/dist-dev/
+
+# Prototype scratch artifacts: browser profiles, logs, keys, binary dumps
+prototypes/**/profile/
+prototypes/**/*.log
+prototypes/**/*.stderr
+prototypes/**/*.pem
+prototypes/**/*.der
+prototypes/p1-file/History.copy
+prototypes/p2-ext/secure-prefs-before-restart.json
+prototypes/p6-cws/strings.txt
