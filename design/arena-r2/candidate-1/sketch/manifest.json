@@ -1,0 +1,12 @@
+{
+  "manifest_version": 3,
+  "name": "Helium Sync",
+  "version": "1.0.0",
+  "minimum_chrome_version": "134",
+  "background": { "service_worker": "background.js", "type": "module" },
+  "action": { "default_popup": "popup.html" },
+  "options_ui": { "page": "app.html#status", "open_in_tab": true },
+  "omnibox": { "keyword": "hs" },
+  "permissions": ["bookmarks", "history", "storage", "unlimitedStorage", "alarms"],
+  "optional_permissions": ["nativeMessaging"]
+}
