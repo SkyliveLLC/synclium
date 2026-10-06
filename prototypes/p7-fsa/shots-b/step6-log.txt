@@ -1,0 +1,56 @@
+2026-10-06T20:44:22.173Z [sw] installed reason=install
+2026-10-06T20:44:26.567Z [page-load] no handle stored
+2026-10-06T20:44:55.783Z [page] picked helium-sync-p7-delete-me
+2026-10-06T20:44:55.785Z [page-after-pick] queryPermission=granted
+2026-10-06T20:44:55.814Z [page-after-pick] write OK probe-page-after-pick.txt
+2026-10-06T20:44:55.819Z [page-after-pick] write OK probe-page-after-pick.json.gz
+2026-10-06T20:44:55.824Z [page-after-pick] write OK probe-page-after-pick.hsync
+2026-10-06T20:44:57.939Z [page-after-pick] lastModified same-size rewrite: 1791319495825 -> 1791319497931 changed=true
+2026-10-06T20:44:57.941Z [page-after-pick] list OK probe-page-after-pick.hsync,mtime-page-after-pick.txt,probe-page-after-pick.json.gz,probe-page-after-pick.txt
+2026-10-06T20:45:22.182Z [sw-alarm] queryPermission=granted
+2026-10-06T20:45:22.192Z [sw-alarm] write OK probe-sw-alarm.txt
+2026-10-06T20:45:22.201Z [sw-alarm] write OK probe-sw-alarm.json.gz
+2026-10-06T20:45:22.207Z [sw-alarm] write OK probe-sw-alarm.hsync
+2026-10-06T20:45:24.328Z [sw-alarm] lastModified same-size rewrite: 1791319522208 -> 1791319524320 changed=true
+2026-10-06T20:45:24.331Z [sw-alarm] list OK probe-sw-alarm.hsync,probe-page-after-pick.hsync,probe-sw-alarm.json.gz,probe-page-after-pick.json.gz,probe-page-after-pick.txt,mtime-sw-alarm.txt,probe-sw-alarm.txt,mtime-page-after-pick.txt
+2026-10-06T20:46:22.192Z [sw-alarm] queryPermission=granted
+2026-10-06T20:46:22.201Z [sw-alarm] write OK probe-sw-alarm.txt
+2026-10-06T20:46:22.209Z [sw-alarm] write OK probe-sw-alarm.json.gz
+2026-10-06T20:46:22.214Z [sw-alarm] write OK probe-sw-alarm.hsync
+2026-10-06T20:46:24.748Z [sw-startup] queryPermission=prompt
+2026-10-06T20:46:24.750Z [sw-startup] write FAILED probe-sw-startup.txt NotAllowedError: Failed to execute 'getFileHandle' on 'FileSystemDirectoryHandle': The request is not allowed by the user agent or the platform in the current context.
+2026-10-06T20:46:24.751Z [sw-startup] write FAILED probe-sw-startup.json.gz NotAllowedError: Failed to execute 'getFileHandle' on 'FileSystemDirectoryHandle': The request is not allowed by the user agent or the platform in the current context.
+2026-10-06T20:46:24.751Z [sw-startup] write FAILED probe-sw-startup.hsync NotAllowedError: Failed to execute 'getFileHandle' on 'FileSystemDirectoryHandle': The request is not allowed by the user agent or the platform in the current context.
+2026-10-06T20:46:24.751Z [sw-startup] mtime check FAILED NotAllowedError: Failed to execute 'getFileHandle' on 'FileSystemDirectoryHandle': The request is not allowed by the user agent or the platform in the current context.
+2026-10-06T20:46:24.754Z [sw-startup] list FAILED NotAllowedError
+2026-10-06T20:47:24.807Z [sw-alarm] queryPermission=prompt
+2026-10-06T20:47:24.807Z [sw-alarm] write FAILED probe-sw-alarm.txt NotAllowedError: Failed to execute 'getFileHandle' on 'FileSystemDirectoryHandle': The request is not allowed by the user agent or the platform in the current context.
+2026-10-06T20:47:24.807Z [sw-alarm] write FAILED probe-sw-alarm.json.gz NotAllowedError: Failed to execute 'getFileHandle' on 'FileSystemDirectoryHandle': The request is not allowed by the user agent or the platform in the current context.
+2026-10-06T20:47:24.808Z [sw-alarm] write FAILED probe-sw-alarm.hsync NotAllowedError: Failed to execute 'getFileHandle' on 'FileSystemDirectoryHandle': The request is not allowed by the user agent or the platform in the current context.
+2026-10-06T20:47:24.808Z [sw-alarm] mtime check FAILED NotAllowedError: Failed to execute 'getFileHandle' on 'FileSystemDirectoryHandle': The request is not allowed by the user agent or the platform in the current context.
+2026-10-06T20:47:24.808Z [sw-alarm] list FAILED NotAllowedError
+2026-10-06T20:47:47.943Z [page-load] queryPermission=prompt
+2026-10-06T20:47:47.944Z [page-load] write FAILED probe-page-load.txt NotAllowedError: Failed to execute 'getFileHandle' on 'FileSystemDirectoryHandle': The request is not allowed by the user agent or the platform in the current context.
+2026-10-06T20:47:47.944Z [page-load] write FAILED probe-page-load.json.gz NotAllowedError: Failed to execute 'getFileHandle' on 'FileSystemDirectoryHandle': The request is not allowed by the user agent or the platform in the current context.
+2026-10-06T20:47:47.944Z [page-load] write FAILED probe-page-load.hsync NotAllowedError: Failed to execute 'getFileHandle' on 'FileSystemDirectoryHandle': The request is not allowed by the user agent or the platform in the current context.
+2026-10-06T20:47:47.944Z [page-load] mtime check FAILED NotAllowedError: Failed to execute 'getFileHandle' on 'FileSystemDirectoryHandle': The request is not allowed by the user agent or the platform in the current context.
+2026-10-06T20:47:47.944Z [page-load] list FAILED NotAllowedError
+2026-10-06T20:48:01.472Z [page] requestPermission=granted
+2026-10-06T20:48:01.483Z [page-after-regrant] queryPermission=granted
+2026-10-06T20:48:01.534Z [page-after-regrant] write OK probe-page-after-regrant.txt
+2026-10-06T20:48:01.538Z [page-after-regrant] write OK probe-page-after-regrant.json.gz
+2026-10-06T20:48:01.541Z [page-after-regrant] write OK probe-page-after-regrant.hsync
+2026-10-06T20:48:03.658Z [page-after-regrant] lastModified same-size rewrite: 1791319681542 -> 1791319683648 changed=true
+2026-10-06T20:48:03.660Z [page-after-regrant] list OK probe-page-after-regrant.hsync,probe-page-after-regrant.txt,probe-sw-alarm.hsync,probe-page-after-regrant.json.gz,mtime-page-after-regrant.txt,probe-page-after-pick.hsync,probe-sw-alarm.json.gz,probe-page-after-pick.json.gz,probe-page-after-pick.txt,probe-sw-alarm.txt,mtime-page-after-pick.txt,mtime-sw-alarm.txt
+2026-10-06T20:48:09.831Z [sw-startup] queryPermission=granted
+2026-10-06T20:48:09.946Z [sw-startup] write OK probe-sw-startup.txt
+2026-10-06T20:48:09.951Z [sw-startup] write OK probe-sw-startup.json.gz
+2026-10-06T20:48:09.962Z [sw-startup] write OK probe-sw-startup.hsync
+2026-10-06T20:48:12.152Z [sw-startup] lastModified same-size rewrite: 1791319689964 -> 1791319692143 changed=true
+2026-10-06T20:48:12.155Z [sw-startup] list OK probe-page-after-regrant.txt,probe-page-after-pick.hsync,probe-sw-alarm.hsync,probe-sw-startup.json.gz,mtime-page-after-regrant.txt,mtime-sw-startup.txt,probe-page-after-pick.json.gz,probe-page-after-pick.txt,probe-sw-alarm.json.gz,mtime-sw-alarm.txt,probe-page-after-regrant.hsync,probe-sw-alarm.txt,probe-sw-startup.txt,mtime-page-after-pick.txt,probe-sw-startup.hsync,probe-page-after-regrant.json.gz
+2026-10-06T20:49:09.896Z [sw-alarm] queryPermission=granted
+2026-10-06T20:49:09.901Z [sw-alarm] write OK probe-sw-alarm.txt
+2026-10-06T20:49:09.904Z [sw-alarm] write OK probe-sw-alarm.json.gz
+2026-10-06T20:49:09.907Z [sw-alarm] write OK probe-sw-alarm.hsync
+2026-10-06T20:49:12.120Z [sw-alarm] lastModified same-size rewrite: 1791319749908 -> 1791319752111 changed=true
+2026-10-06T20:49:12.124Z [sw-alarm] list OK probe-page-after-regrant.hsync,probe-page-after-regrant.txt,probe-sw-startup.txt,probe-page-after-pick.hsync,probe-sw-startup.json.gz,mtime-page-after-regrant.txt,probe-page-after-regrant.json.gz,probe-sw-alarm.hsync,mtime-sw-startup.txt,probe-sw-alarm.json.gz,probe-page-after-pick.json.gz,mtime-sw-alarm.txt,probe-sw-alarm.txt,probe-page-after-pick.txt,probe-sw-startup.hsync,mtime-page-after-pick.txt

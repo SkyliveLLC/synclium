@@ -1,0 +1,2 @@
+#!/bin/sh
+pkill -TERM -f -- "MacOS/Helium --user-data-dir=/Users/conan/Dev/open-synclium/prototypes/p7-fsa/profile"; sleep 3; pgrep -f -- "/Users/conan/Dev/open-synclium/prototypes/p7-fsa/profile" >/dev/null && echo "still running" || echo "scratch quit"

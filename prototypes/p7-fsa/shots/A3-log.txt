@@ -1,0 +1,21 @@
+2026-10-06T20:33:01.014Z [sw] installed
+2026-10-06T20:33:04.599Z [page-load] no handle stored
+2026-10-06T20:33:44.248Z [page] picked helium-sync-p7-delete-me
+2026-10-06T20:33:44.249Z [page-after-pick] queryPermission=granted
+2026-10-06T20:33:44.267Z [page-after-pick] write OK probe-page-after-pick.txt
+2026-10-06T20:33:44.271Z [page-after-pick] write OK probe-page-after-pick.json.gz
+2026-10-06T20:33:44.275Z [page-after-pick] write OK probe-page-after-pick.hsync
+2026-10-06T20:33:46.393Z [page-after-pick] lastModified same-size rewrite: 1791318824275 -> 1791318826383 changed=true
+2026-10-06T20:33:46.395Z [page-after-pick] list OK probe-page-after-pick.hsync,mtime-page-after-pick.txt,probe-page-after-pick.json.gz,probe-page-after-pick.txt
+2026-10-06T20:34:01.014Z [sw-alarm] queryPermission=granted
+2026-10-06T20:34:01.025Z [sw-alarm] write OK probe-sw-alarm.txt
+2026-10-06T20:34:01.033Z [sw-alarm] write OK probe-sw-alarm.json.gz
+2026-10-06T20:34:01.038Z [sw-alarm] write OK probe-sw-alarm.hsync
+2026-10-06T20:34:03.161Z [sw-alarm] lastModified same-size rewrite: 1791318841039 -> 1791318843150 changed=true
+2026-10-06T20:34:03.164Z [sw-alarm] list OK probe-sw-alarm.hsync,probe-page-after-pick.hsync,probe-sw-alarm.json.gz,mtime-page-after-pick.txt,probe-sw-alarm.txt,mtime-sw-alarm.txt,probe-page-after-pick.txt,probe-page-after-pick.json.gz
+2026-10-06T20:35:01.023Z [sw-alarm] queryPermission=granted
+2026-10-06T20:35:01.033Z [sw-alarm] write OK probe-sw-alarm.txt
+2026-10-06T20:35:01.043Z [sw-alarm] write OK probe-sw-alarm.json.gz
+2026-10-06T20:35:01.050Z [sw-alarm] write OK probe-sw-alarm.hsync
+2026-10-06T20:35:03.171Z [sw-alarm] lastModified same-size rewrite: 1791318901051 -> 1791318903162 changed=true
+2026-10-06T20:35:03.173Z [sw-alarm] list OK probe-sw-alarm.hsync,probe-page-after-pick.hsync,probe-page-after-pick.txt,probe-sw-alarm.json.gz,mtime-sw-alarm.txt,probe-page-after-pick.json.gz,mtime-page-after-pick.txt,probe-sw-alarm.txt

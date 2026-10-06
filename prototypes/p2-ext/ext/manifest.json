@@ -1,0 +1,3 @@
+{"manifest_version":3,"name":"p2 sync companion","version":"0.0.1","key":"MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAuepLtzTYFWYrre5sZjcFGgEdn+CRGLZJLO+bQ05YTlpZYFcYwKUCT0pAmBxwCLruNNXrYOfPnrdPJPSfDTnH2ZyMDGIHzHsHH3uh+16+XVwlhwHuaUUOkSq+9+eZT5hCv1bA1O4HvW/RTZ9Mtvd2tCyHZFcSCXiRBaTm2WlXwTMD7GLZ/epO6NMXe5oCSDO4F3AfqTffC1WHHukJqLyMcQAROWDt8a9oQdel+debg3rlDj/IGOu1u+sZ0U5SBvTcqeztOcBRDpx9TDLTfZnYDiegZKFR4umxyceCkSx8Yx5GwwQYVIpgMA3yUgMg0TgvBxXk6hfsQAlXG1ErprGZIQIDAQAB",
+"background":{"service_worker":"sw.js"},
+"permissions":["nativeMessaging","bookmarks","history","tabs","management","sessions","storage"]}

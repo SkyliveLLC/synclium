@@ -1,0 +1,14 @@
+The following is a diff from the previous accessibility tree for Window: "p7 FSA probe - SCRATCH" with ~ and + representing changed and added elements, respectively. Removed elements are summarized by ID range.
+~						19 heading SCRATCH p7 FSA probe, Value: 1
++		45 container p7 fsa probe wants to
++			46 container
++				47 heading p7 fsa probe wants to
++				48 text View and edit files from the last time you visited this site:
++				49 button Close
++				50 scroll area
++					51 text helium-sync-p7-delete-me
++				52 container
++					53 button Allow this time
++					54 button Allow on every visit
++					55 button Don't allow
+The focused UI element is 22 button Re-grant access

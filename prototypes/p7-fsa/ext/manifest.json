@@ -1,0 +1,1 @@
+{"manifest_version":3,"name":"p7 fsa probe","version":"0.0.1","background":{"service_worker":"sw.js","type":"module"},"options_page":"options.html","permissions":["storage","alarms"]}

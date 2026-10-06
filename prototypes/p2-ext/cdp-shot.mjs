@@ -1,0 +1,13 @@
+const [,, url, out] = process.argv;
+const t = await (await fetch(`http://localhost:9334/json/new?${url}`, { method: 'PUT' })).json();
+const ws = new WebSocket(t.webSocketDebuggerUrl);
+let id = 0; const pend = new Map();
+ws.onmessage = (e) => { const m = JSON.parse(e.data); pend.get(m.id)?.(m.result ?? m); };
+const call = (method, params = {}) => new Promise(r => { pend.set(++id, r); ws.send(JSON.stringify({ id, method, params })); });
+await new Promise(r => ws.onopen = r);
+await new Promise(r => setTimeout(r, 2500));
+const text = await call('Runtime.evaluate', { expression: `(() => { const walk = (n, out=[]) => { if (n.shadowRoot) walk(n.shadowRoot, out); for (const c of n.children ?? []) walk(c, out); if (n.nodeType===1 && !n.children.length && n.textContent.trim()) out.push(n.textContent.trim()); return out; }; return [...new Set(walk(document.documentElement))].join(' | '); })()`, returnByValue: true });
+console.log(text.result?.value?.slice(0, 3000));
+const shot = await call('Page.captureScreenshot');
+(await import('node:fs')).writeFileSync(out, Buffer.from(shot.data, 'base64'));
+ws.close();

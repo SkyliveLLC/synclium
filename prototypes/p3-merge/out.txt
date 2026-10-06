@@ -1,0 +1,280 @@
+
+=== 1 concurrent add + rename-other ===
+[A-naive / dropbox] converged=true folderConflicts=1 leftoverCopies=1 lost=Y rename kept
+    + url "n1" in "Bookmarks Bar"
+[A / dropbox] converged=true folderConflicts=1 leftoverCopies=1 lost=none
+    ~ "@react-oauth/google - npm" -> "Y-renamed"
+    + url "n1" in "Bookmarks Bar"
+[B / dropbox] converged=true folderConflicts=0 leftoverCopies=0 lost=none
+    ~ "@react-oauth/google - npm" -> "Y-renamed"
+    + url "n1" in "Bookmarks Bar"
+[A-naive / lossy] converged=true folderConflicts=1 leftoverCopies=0 lost=X add kept
+    ~ "@react-oauth/google - npm" -> "Y-renamed"
+[A / lossy] converged=true folderConflicts=1 leftoverCopies=0 lost=none
+    ~ "@react-oauth/google - npm" -> "Y-renamed"
+    + url "n1" in "Bookmarks Bar"
+[B / lossy] converged=true folderConflicts=0 leftoverCopies=0 lost=none
+    ~ "@react-oauth/google - npm" -> "Y-renamed"
+    + url "n1" in "Bookmarks Bar"
+
+=== 2 move-into-F vs delete-F ===
+[A-naive / dropbox] converged=true folderConflicts=1 leftoverCopies=1 lost=F deleted
+    > "npm" moved "NPM" -> "Vue"
+[A / dropbox] converged=true folderConflicts=1 leftoverCopies=1 lost=none
+    > "npm" moved "NPM" -> "Utils"
+    - folder "Vue"
+    - url "Sessions and Authentication · Recipes"
+    - url "Pinia Colada | The smart data fetching layer for Vue.js"
+[B / dropbox] converged=true folderConflicts=0 leftoverCopies=0 lost=none
+    > "npm" moved "NPM" -> "Utils"
+    - folder "Vue"
+    - url "Sessions and Authentication · Recipes"
+    - url "Pinia Colada | The smart data fetching layer for Vue.js"
+[A-naive / lossy] converged=true folderConflicts=1 leftoverCopies=0 lost=X move not reverted
+    - folder "Vue"
+    - url "Sessions and Authentication · Recipes"
+    - url "Pinia Colada | The smart data fetching layer for Vue.js"
+[A / lossy] converged=true folderConflicts=1 leftoverCopies=0 lost=none
+    > "npm" moved "NPM" -> "Utils"
+    - folder "Vue"
+    - url "Sessions and Authentication · Recipes"
+    - url "Pinia Colada | The smart data fetching layer for Vue.js"
+[B / lossy] converged=true folderConflicts=0 leftoverCopies=0 lost=none
+    > "npm" moved "NPM" -> "Utils"
+    - folder "Vue"
+    - url "Sessions and Authentication · Recipes"
+    - url "Pinia Colada | The smart data fetching layer for Vue.js"
+
+=== 3 same-field rename (Y 1s later) ===
+[A-naive / dropbox] converged=true folderConflicts=1 leftoverCopies=1 lost=later edit (Y) wins
+    ~ "mongoose - npm" -> "X-title"
+[A / dropbox] converged=true folderConflicts=1 leftoverCopies=1 lost=later edit (Y) wins
+    ~ "mongoose - npm" -> "X-title"
+[B / dropbox] converged=true folderConflicts=0 leftoverCopies=0 lost=none
+    ~ "mongoose - npm" -> "Y-title"
+[A-naive / lossy] converged=true folderConflicts=1 leftoverCopies=0 lost=none
+    ~ "mongoose - npm" -> "Y-title"
+[A / lossy] converged=true folderConflicts=1 leftoverCopies=0 lost=none
+    ~ "mongoose - npm" -> "Y-title"
+[B / lossy] converged=true folderConflicts=0 leftoverCopies=0 lost=none
+    ~ "mongoose - npm" -> "Y-title"
+
+=== 3b same as 3, Y clock 10min slow ===
+[A-naive / dropbox] converged=true folderConflicts=1 leftoverCopies=1 lost=later edit (Y) wins
+    ~ "mongoose - npm" -> "X-title"
+[A / dropbox] converged=true folderConflicts=1 leftoverCopies=1 lost=later edit (Y) wins
+    ~ "mongoose - npm" -> "X-title"
+[B / dropbox] converged=true folderConflicts=0 leftoverCopies=0 lost=later edit (Y) wins
+    ~ "mongoose - npm" -> "X-title"
+[A-naive / lossy] converged=true folderConflicts=1 leftoverCopies=0 lost=none
+    ~ "mongoose - npm" -> "Y-title"
+[A / lossy] converged=true folderConflicts=1 leftoverCopies=0 lost=none
+    ~ "mongoose - npm" -> "Y-title"
+[B / lossy] converged=true folderConflicts=0 leftoverCopies=0 lost=later edit (Y) wins
+    ~ "mongoose - npm" -> "X-title"
+
+=== 4 X offline a week ===
+[A-naive / dropbox] converged=true folderConflicts=1 leftoverCopies=1 lost=X offline add kept; X day6 rename kept
+    ~ "multer - npm" -> "Y-day3"
+    ~ "tailwind-merge - npm" -> "Y-other"
+[A / dropbox] converged=true folderConflicts=1 leftoverCopies=1 lost=X offline add kept
+    ~ "multer - npm" -> "Y-day3"
+    ~ "tailwind-merge - npm" -> "Y-other"
+    ~ "jorenvanhee/tailwindcss-debug-screens: A Tailwind CSS component that shows the currently active screen (responsive breakpoint)." -> "X-day6"
+[B / dropbox] converged=true folderConflicts=0 leftoverCopies=0 lost=none
+    ~ "multer - npm" -> "Y-day3"
+    ~ "tailwind-merge - npm" -> "Y-other"
+    ~ "jorenvanhee/tailwindcss-debug-screens: A Tailwind CSS component that shows the currently active screen (responsive breakpoint)." -> "X-day6"
+    + url "n4" in "Bookmarks Bar"
+[A-naive / lossy] converged=true folderConflicts=1 leftoverCopies=0 lost=Y rename kept; u3: later (Y day3) wins
+    ~ "multer - npm" -> "X-offline"
+    ~ "jorenvanhee/tailwindcss-debug-screens: A Tailwind CSS component that shows the currently active screen (responsive breakpoint)." -> "X-day6"
+    + url "n4" in "Bookmarks Bar"
+[A / lossy] converged=true folderConflicts=1 leftoverCopies=0 lost=u3: later (Y day3) wins
+    ~ "multer - npm" -> "X-offline"
+    ~ "tailwind-merge - npm" -> "Y-other"
+    ~ "jorenvanhee/tailwindcss-debug-screens: A Tailwind CSS component that shows the currently active screen (responsive breakpoint)." -> "X-day6"
+    + url "n4" in "Bookmarks Bar"
+[B / lossy] converged=true folderConflicts=0 leftoverCopies=0 lost=none
+    ~ "multer - npm" -> "Y-day3"
+    ~ "tailwind-merge - npm" -> "Y-other"
+    ~ "jorenvanhee/tailwindcss-debug-screens: A Tailwind CSS component that shows the currently active screen (responsive breakpoint)." -> "X-day6"
+    + url "n4" in "Bookmarks Bar"
+
+=== 5 crash after store write ===
+[A-naive / dropbox] converged=true folderConflicts=0 leftoverCopies=0 lost=none
+    ~ "clsx - npm" -> "X-7"
+    ~ "wouter - npm" -> "Y-8"
+    + url "n5" in "Bookmarks Bar"
+[A / dropbox] converged=true folderConflicts=0 leftoverCopies=0 lost=none
+    ~ "clsx - npm" -> "X-7"
+    ~ "wouter - npm" -> "Y-8"
+    + url "n5" in "Bookmarks Bar"
+[B / dropbox] converged=true folderConflicts=0 leftoverCopies=0 lost=none
+    ~ "clsx - npm" -> "X-7"
+    ~ "wouter - npm" -> "Y-8"
+    + url "n5" in "Bookmarks Bar"
+[A-naive / lossy] converged=true folderConflicts=0 leftoverCopies=0 lost=none
+    ~ "clsx - npm" -> "X-7"
+    ~ "wouter - npm" -> "Y-8"
+    + url "n5" in "Bookmarks Bar"
+[A / lossy] converged=true folderConflicts=0 leftoverCopies=0 lost=none
+    ~ "clsx - npm" -> "X-7"
+    ~ "wouter - npm" -> "Y-8"
+    + url "n5" in "Bookmarks Bar"
+[B / lossy] converged=true folderConflicts=0 leftoverCopies=0 lost=none
+    ~ "clsx - npm" -> "X-7"
+    ~ "wouter - npm" -> "Y-8"
+    + url "n5" in "Bookmarks Bar"
+
+=== 6 Z joins with own tree (adopt on) ===
+[A-naive / dropbox] converged=true folderConflicts=0 leftoverCopies=0 lost=X delete stays deleted
+    + url "z-only" in "Bookmarks Bar"
+    !! Y vs first device: 
+    !! Z vs first device: + url "npm" in "NPM"
+[A / dropbox] converged=false folderConflicts=0 leftoverCopies=0 lost=none
+    + url "z-only" in "Bookmarks Bar"
+    - url "npm"
+[B / dropbox] converged=true folderConflicts=0 leftoverCopies=0 lost=none
+    + url "z-only" in "Bookmarks Bar"
+    - url "npm"
+[A-naive / lossy] converged=true folderConflicts=0 leftoverCopies=0 lost=X delete stays deleted
+    + url "z-only" in "Bookmarks Bar"
+    !! Y vs first device: 
+    !! Z vs first device: + url "npm" in "NPM"
+[A / lossy] converged=false folderConflicts=0 leftoverCopies=0 lost=none
+    + url "z-only" in "Bookmarks Bar"
+    - url "npm"
+[B / lossy] converged=true folderConflicts=0 leftoverCopies=0 lost=none
+    + url "z-only" in "Bookmarks Bar"
+    - url "npm"
+
+=== 6b Z joins (adopt off) ===
+[A-naive / dropbox] converged=true folderConflicts=0 leftoverCopies=0 lost=no duplicates; X delete stays deleted
+    + url "z-only" in "Bookmarks Bar"
+    + folder "IA" in "Bookmarks Bar"
+    + url "FlatiIcon" in "Utils"
+    + url "Freelancer" in "Utils"
+    + url "Pexels" in "Utils"
+    + url "Qwen" in "IA"
+    + url "DeepSeek - Into the Unknown" in "IA"
+    !! Y vs first device: 
+    !! Z vs first device: + url "npm" in "NPM"
+[A / dropbox] converged=false folderConflicts=0 leftoverCopies=0 lost=no duplicates
+    + url "z-only" in "Bookmarks Bar"
+    + folder "IA" in "Bookmarks Bar"
+    + url "FlatiIcon" in "Utils"
+    + url "Freelancer" in "Utils"
+    + url "Pexels" in "Utils"
+    + url "Qwen" in "IA"
+    + url "DeepSeek - Into the Unknown" in "IA"
+    - url "npm"
+[B / dropbox] converged=true folderConflicts=0 leftoverCopies=0 lost=no duplicates
+    + url "z-only" in "Bookmarks Bar"
+    + folder "IA" in "Bookmarks Bar"
+    + url "FlatiIcon" in "Utils"
+    + url "Freelancer" in "Utils"
+    + url "Pexels" in "Utils"
+    + url "Qwen" in "IA"
+    + url "DeepSeek - Into the Unknown" in "IA"
+    - url "npm"
+[A-naive / lossy] converged=true folderConflicts=0 leftoverCopies=0 lost=no duplicates; X delete stays deleted
+    + url "z-only" in "Bookmarks Bar"
+    + folder "IA" in "Bookmarks Bar"
+    + url "FlatiIcon" in "Utils"
+    + url "Freelancer" in "Utils"
+    + url "Pexels" in "Utils"
+    + url "Qwen" in "IA"
+    + url "DeepSeek - Into the Unknown" in "IA"
+    !! Y vs first device: 
+    !! Z vs first device: + url "npm" in "NPM"
+[A / lossy] converged=false folderConflicts=0 leftoverCopies=0 lost=no duplicates
+    + url "z-only" in "Bookmarks Bar"
+    + folder "IA" in "Bookmarks Bar"
+    + url "FlatiIcon" in "Utils"
+    + url "Freelancer" in "Utils"
+    + url "Pexels" in "Utils"
+    + url "Qwen" in "IA"
+    + url "DeepSeek - Into the Unknown" in "IA"
+    - url "npm"
+[B / lossy] converged=true folderConflicts=0 leftoverCopies=0 lost=no duplicates
+    + url "z-only" in "Bookmarks Bar"
+    + folder "IA" in "Bookmarks Bar"
+    + url "FlatiIcon" in "Utils"
+    + url "Freelancer" in "Utils"
+    + url "Pexels" in "Utils"
+    + url "Qwen" in "IA"
+    + url "DeepSeek - Into the Unknown" in "IA"
+    - url "npm"
+
+=== 7 X adds, Y deletes it before X resyncs ===
+[A-naive / dropbox] converged=true folderConflicts=0 leftoverCopies=0 lost=none
+
+    !! Y vs first device: - url "n7"
+[A / dropbox] converged=false folderConflicts=0 leftoverCopies=0 lost=Y delete honored
+    + url "n7" in "Bookmarks Bar"
+[B / dropbox] converged=true folderConflicts=0 leftoverCopies=0 lost=none
+
+[A-naive / lossy] converged=true folderConflicts=0 leftoverCopies=0 lost=none
+
+    !! Y vs first device: - url "n7"
+[A / lossy] converged=false folderConflicts=0 leftoverCopies=0 lost=Y delete honored
+    + url "n7" in "Bookmarks Bar"
+[B / lossy] converged=true folderConflicts=0 leftoverCopies=0 lost=none
+
+
+=== SUMMARY ===
+1 concurrent add + rename-other            dropbox  A-naive  conv=Y lost=Y rename kept
+1 concurrent add + rename-other            dropbox  A        conv=Y lost=-
+1 concurrent add + rename-other            dropbox  B        conv=Y lost=-
+1 concurrent add + rename-other            lossy    A-naive  conv=Y lost=X add kept
+1 concurrent add + rename-other            lossy    A        conv=Y lost=-
+1 concurrent add + rename-other            lossy    B        conv=Y lost=-
+2 move-into-F vs delete-F                  dropbox  A-naive  conv=Y lost=F deleted
+2 move-into-F vs delete-F                  dropbox  A        conv=Y lost=-
+2 move-into-F vs delete-F                  dropbox  B        conv=Y lost=-
+2 move-into-F vs delete-F                  lossy    A-naive  conv=Y lost=X move not reverted
+2 move-into-F vs delete-F                  lossy    A        conv=Y lost=-
+2 move-into-F vs delete-F                  lossy    B        conv=Y lost=-
+3 same-field rename (Y 1s later)           dropbox  A-naive  conv=Y lost=later edit (Y) wins
+3 same-field rename (Y 1s later)           dropbox  A        conv=Y lost=later edit (Y) wins
+3 same-field rename (Y 1s later)           dropbox  B        conv=Y lost=-
+3 same-field rename (Y 1s later)           lossy    A-naive  conv=Y lost=-
+3 same-field rename (Y 1s later)           lossy    A        conv=Y lost=-
+3 same-field rename (Y 1s later)           lossy    B        conv=Y lost=-
+3b same as 3, Y clock 10min slow           dropbox  A-naive  conv=Y lost=later edit (Y) wins
+3b same as 3, Y clock 10min slow           dropbox  A        conv=Y lost=later edit (Y) wins
+3b same as 3, Y clock 10min slow           dropbox  B        conv=Y lost=later edit (Y) wins
+3b same as 3, Y clock 10min slow           lossy    A-naive  conv=Y lost=-
+3b same as 3, Y clock 10min slow           lossy    A        conv=Y lost=-
+3b same as 3, Y clock 10min slow           lossy    B        conv=Y lost=later edit (Y) wins
+4 X offline a week                         dropbox  A-naive  conv=Y lost=X offline add kept; X day6 rename kept
+4 X offline a week                         dropbox  A        conv=Y lost=X offline add kept
+4 X offline a week                         dropbox  B        conv=Y lost=-
+4 X offline a week                         lossy    A-naive  conv=Y lost=Y rename kept; u3: later (Y day3) wins
+4 X offline a week                         lossy    A        conv=Y lost=u3: later (Y day3) wins
+4 X offline a week                         lossy    B        conv=Y lost=-
+5 crash after store write                  dropbox  A-naive  conv=Y lost=-
+5 crash after store write                  dropbox  A        conv=Y lost=-
+5 crash after store write                  dropbox  B        conv=Y lost=-
+5 crash after store write                  lossy    A-naive  conv=Y lost=-
+5 crash after store write                  lossy    A        conv=Y lost=-
+5 crash after store write                  lossy    B        conv=Y lost=-
+6 Z joins with own tree (adopt on)         dropbox  A-naive  conv=Y lost=X delete stays deleted
+6 Z joins with own tree (adopt on)         dropbox  A        conv=N lost=-
+6 Z joins with own tree (adopt on)         dropbox  B        conv=Y lost=-
+6 Z joins with own tree (adopt on)         lossy    A-naive  conv=Y lost=X delete stays deleted
+6 Z joins with own tree (adopt on)         lossy    A        conv=N lost=-
+6 Z joins with own tree (adopt on)         lossy    B        conv=Y lost=-
+6b Z joins (adopt off)                     dropbox  A-naive  conv=Y lost=no duplicates; X delete stays deleted
+6b Z joins (adopt off)                     dropbox  A        conv=N lost=no duplicates
+6b Z joins (adopt off)                     dropbox  B        conv=Y lost=no duplicates
+6b Z joins (adopt off)                     lossy    A-naive  conv=Y lost=no duplicates; X delete stays deleted
+6b Z joins (adopt off)                     lossy    A        conv=N lost=no duplicates
+6b Z joins (adopt off)                     lossy    B        conv=Y lost=no duplicates
+7 X adds, Y deletes it before X resyncs    dropbox  A-naive  conv=Y lost=-
+7 X adds, Y deletes it before X resyncs    dropbox  A        conv=N lost=Y delete honored
+7 X adds, Y deletes it before X resyncs    dropbox  B        conv=Y lost=-
+7 X adds, Y deletes it before X resyncs    lossy    A-naive  conv=Y lost=-
+7 X adds, Y deletes it before X resyncs    lossy    A        conv=N lost=Y delete honored
+7 X adds, Y deletes it before X resyncs    lossy    B        conv=Y lost=-

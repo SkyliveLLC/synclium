@@ -1,0 +1,11 @@
+const [,, path] = process.argv;
+const t = (await (await fetch('http://localhost:9334/json/list')).json()).find(t => t.url.startsWith('chrome://extensions'));
+const ws = new WebSocket(t.webSocketDebuggerUrl);
+let id = 0; const pend = new Map();
+ws.onmessage = (e) => { const m = JSON.parse(e.data); if (m.id) pend.get(m.id)?.(m); };
+const call = (method, params = {}) => new Promise(r => { pend.set(++id, r); ws.send(JSON.stringify({ id, method, params })); });
+await new Promise(r => ws.onopen = r);
+const data = { items: [], files: [path], dragOperationsMask: 1 };
+for (const type of ['dragEnter', 'dragOver', 'drop']) console.log(type, JSON.stringify(await call('Input.dispatchDragEvent', { type, x: 600, y: 400, data })));
+await new Promise(r => setTimeout(r, 3000));
+ws.close();
