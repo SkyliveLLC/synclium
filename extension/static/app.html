@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Helium Sync</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body class="app">
+  <header>
+    <h1>Helium Sync</h1>
+    <nav>
+      <a href="#status">Status</a>
+      <a href="#history">History</a>
+      <a href="#advanced">Advanced</a>
+    </nav>
+  </header>
+  <main>
+    <section id="setup" hidden>
+      <h2>Set up this device</h2>
+      <div class="step">
+        <h3>1. Choose a folder you already sync</h3>
+        <p>iCloud Drive, Dropbox, or Syncthing. Each device picks the same folder.</p>
+        <button id="choose">Choose folder</button>
+        <p id="choose-note" class="note">On another device, pick the same folder, or the Helium Sync folder inside it.</p>
+        <p id="store-label" class="note" hidden></p>
+      </div>
+      <div class="step">
+        <h3>2. Name this device</h3>
+        <input id="name" type="text" maxlength="64" autocomplete="off" aria-label="Device name">
+        <label class="check"><input id="history-on" type="checkbox" checked> Sync history</label>
+        <p class="note">Bookmarks and the last 90 days of history are stored unencrypted in this folder.</p>
+        <p id="preview" class="preview" hidden></p>
+        <button id="start" class="primary" disabled>Start</button>
+      </div>
+      <p id="setup-result" class="status" hidden></p>
+    </section>
+
+    <section id="allow" hidden>
+      <h2>Allow access</h2>
+      <p>Helium asks again for access to the sync folder after it restarts. Until you allow it, sync is paused. Edits you make meanwhile are kept and sync once access returns.</p>
+      <p>In Helium's prompt, choose <strong>Allow on every visit</strong> so Helium Sync never asks again.</p>
+      <button id="allow-button" class="primary">Allow access</button>
+      <p id="allow-result" class="note" hidden></p>
+    </section>
+
+    <section id="status" hidden>
+      <p id="status-line" class="status">&nbsp;</p>
+      <div class="actions">
+        <button id="status-sync" class="primary">Sync now</button>
+        <button id="status-action" hidden></button>
+        <button id="status-check">Check folder</button>
+      </div>
+      <p id="check-result" class="note" hidden></p>
+      <h3>Devices</h3>
+      <ul id="devices" class="rows"></ul>
+      <h3>Problems</h3>
+      <ul id="warnings" class="rows"></ul>
+    </section>
+
+    <section id="review" hidden>
+      <h2>Review deletions</h2>
+      <p id="review-line"></p>
+      <ul id="review-sample" class="rows"></ul>
+      <button id="apply-deletions" class="danger">Apply these deletions</button>
+    </section>
+
+    <section id="history" hidden>
+      <input id="q" type="search" placeholder="Search history from your other devices" autocomplete="off" aria-label="Search history">
+      <p class="note">Tip: type <kbd>hs</kbd> and a space in the address bar to search from anywhere.</p>
+      <div id="results"></div>
+    </section>
+
+    <section id="advanced" hidden>
+      <h3>History</h3>
+      <label class="check"><input id="adv-history" type="checkbox"> Sync history</label>
+      <p class="note">Bookmarks and the last 90 days of history are stored unencrypted in this folder.</p>
+      <h3>Folder</h3>
+      <p>This device joins the folder you pick as a new device. Bookmarks that already match are not duplicated.</p>
+      <button id="change-folder">Change folder</button>
+      <p id="change-result" class="note" hidden></p>
+      <h3>Forget this device</h3>
+      <p>Deletes this device's files from the sync folder and its sync state here. Bookmarks and history in Helium stay as they are.</p>
+      <button id="forget" class="danger">Forget this device</button>
+      <p id="device-id" class="note"></p>
+    </section>
+  </main>
+  <script type="module" src="app.js"></script>
+</body>
+</html>
