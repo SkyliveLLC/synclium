@@ -7,3 +7,7 @@ A Chrome Web Store extension that syncs bookmarks and history between one person
 - `prototypes/`: throwaway probes that grounded the design against real Helium.
 
 Status: pre-release. Two-device sync works end to end; see `todo.md` for what is open.
+
+## License
+
+MIT. See `LICENSE`.

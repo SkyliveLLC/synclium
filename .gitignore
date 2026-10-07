@@ -5,7 +5,7 @@ node_modules/
 extension/dist/
 extension/dist-dev/
 
-# Prototype scratch artifacts: browser profiles, logs, keys, binary dumps
+# Prototype scratch artifacts: browser profiles, logs, keys, binary dumps, extracted Helium (GPL-3.0) sources
 prototypes/**/profile/
 prototypes/**/*.log
 prototypes/**/*.stderr
@@ -14,3 +14,4 @@ prototypes/**/*.der
 prototypes/p1-file/History.copy
 prototypes/p2-ext/secure-prefs-before-restart.json
 prototypes/p6-cws/strings.txt
+prototypes/p6-cws/fixup-*.txt
