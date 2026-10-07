@@ -54,12 +54,12 @@ watch(join(root, 'dev'), changed);
 
 const TYPES = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css', '.json': 'application/json', '.png': 'image/png', '.svg': 'image/svg+xml' };
 // The fake chrome and the reload listener run before the page's own module, because module scripts run in order.
-const INJECT =
-  '<script type="module" src="/__dev/chrome-mock.js"></script>\n' +
-  '  <script type="module">new EventSource("/__dev/events").addEventListener("reload", () => location.reload());</script>\n  ';
+// `?shot` is a still frame for store screenshots (scripts/store-assets.mjs): no live reload, no preview toolbar.
+const MOCK = '<script type="module" src="/__dev/chrome-mock.js"></script>\n  ';
+const RELOAD = '<script type="module">new EventSource("/__dev/events").addEventListener("reload", () => location.reload());</script>\n  ';
 
 createServer((req, res) => {
-  const { pathname } = new URL(req.url ?? '/', 'http://localhost');
+  const { pathname, searchParams } = new URL(req.url ?? '/', 'http://localhost');
   if (pathname === '/') return void res.writeHead(302, { location: '/app.html#status' }).end();
   if (pathname === '/__dev/events') {
     res.writeHead(200, { 'content-type': 'text/event-stream', 'cache-control': 'no-store' });
@@ -74,7 +74,7 @@ createServer((req, res) => {
     const file = join(out, normalize(pathname)); // normalize resolves `..` against the leading /
     if (!file.startsWith(out)) return void res.writeHead(403).end();
     let body = readFileSync(file);
-    if (extname(file) === '.html') body = body.toString().replace('<script type="module"', `${INJECT}<script type="module"`);
+    if (extname(file) === '.html') body = body.toString().replace('<script type="module"', `${MOCK}${searchParams.has('shot') ? '' : RELOAD}<script type="module"`);
     res.writeHead(200, { 'content-type': TYPES[extname(file)] ?? 'application/octet-stream', 'cache-control': 'no-store' }).end(body);
   } catch {
     res.writeHead(404).end('not found');

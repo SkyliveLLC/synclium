@@ -4,6 +4,8 @@ A Chrome Web Store extension that syncs bookmarks, history, and the reading list
 
 - `extension/`: the extension. `npm install`, then `npm test`, `npm run typecheck`, `npm run build` (output in `extension/dist`, load it unpacked).
   `npm run dev` keeps a dev build in `extension/dist-dev` up to date, opens Helium with it loaded (reloading on change), and previews its pages at http://localhost:5174 with fake sync states (`?scenario=`).
+  `npm run package` zips the release build for a store upload; `npm run store-assets` re-renders the icons, screenshots, and promo tile.
+- `store/`: the Chrome Web Store listing copy (`listing.md`) and its images. The privacy policy is `PRIVACY.md`.
 - `design/`: the design (`DESIGN.md`) and the design-round records behind it.
 - `prototypes/`: throwaway probes that grounded the design against real Helium.
 

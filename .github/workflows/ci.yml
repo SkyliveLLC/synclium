@@ -1,0 +1,46 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  extension:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: extension
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: extension/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run package
+      # The zip a store upload takes, for any commit.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: synclium-extension
+          path: extension/synclium-*.zip
+
+  companion:
+    # The companion is macOS-only for now (paths.ts).
+    runs-on: macos-latest
+    defaults:
+      run:
+        working-directory: companion
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: companion/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
