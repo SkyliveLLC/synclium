@@ -204,5 +204,5 @@ function toolbar(): HTMLElement {
   bar.append('dev', select, page);
   return bar;
 }
-// Module scripts run after parsing, so the body exists.
-document.body.append(toolbar());
+// Module scripts run after parsing, so the body exists. `?shot` (a store screenshot) goes without it.
+if (!new URLSearchParams(location.search).has('shot')) document.body.append(toolbar());

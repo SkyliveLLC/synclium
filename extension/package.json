@@ -7,7 +7,9 @@
     "build:dev": "node scripts/build.mjs --dev",
     "dev": "node --disable-warning=ExperimentalWarning scripts/dev.mjs",
     "typecheck": "tsc --noEmit",
-    "test": "node --test \"test/*.test.ts\""
+    "test": "node --test \"test/*.test.ts\"",
+    "package": "node scripts/package.mjs",
+    "store-assets": "node scripts/store-assets.mjs"
   },
   "devDependencies": {
     "@types/chrome": "^0.1.43",

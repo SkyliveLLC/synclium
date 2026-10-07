@@ -5,6 +5,7 @@ node_modules/
 extension/dist/
 extension/dist-dev/
 companion/dist/
+extension/synclium-*.zip
 
 # Prototype scratch artifacts: browser profiles, logs, keys, binary dumps, extracted Helium (GPL-3.0) sources
 prototypes/**/profile/

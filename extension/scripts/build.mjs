@@ -13,7 +13,7 @@ const DEV_ONLY = ['dev-store.js', 'worker-dev.js'];
 
 rmSync(out, { recursive: true, force: true });
 execFileSync(join(root, 'node_modules/.bin/tsc'), ['-p', join(root, dev ? 'tsconfig.build-dev.json' : 'tsconfig.build.json')], { stdio: 'inherit' });
-for (const name of readdirSync(join(root, 'static'))) if (name !== 'manifest.json') cpSync(join(root, 'static', name), join(out, name));
+for (const name of readdirSync(join(root, 'static'))) if (name !== 'manifest.json') cpSync(join(root, 'static', name), join(out, name), { recursive: true });
 
 const manifest = JSON.parse(readFileSync(join(root, 'static/manifest.json'), 'utf8'));
 if (dev) {
