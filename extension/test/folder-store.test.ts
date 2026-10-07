@@ -9,12 +9,13 @@ import { dayOf } from '../src/model.ts';
 import { deviceId } from './support/memory-local.ts';
 import { FakeDir, FakeVolume } from './support/fake-fsa.ts';
 import { createEngine } from '../src/engine.ts';
-import { gzipJson } from '../src/store-format.ts';
 import { noAsks, unbounded } from '../src/ports.ts';
 import { FakeBrowser, fakeBookmarks, itemIds } from './support/fake-bookmarks.ts';
 import { FakeHistory } from './support/fake-history.ts';
+import { FakeReadingList } from './support/fake-reading-list.ts';
+import { readingListChannel } from '../src/chrome-reading-list.ts';
 import { memoryLocal, memoryLogLocal, memorySink } from './support/memory-local.ts';
-import { FakeClock } from './support/harness.ts';
+import { FakeClock, TEST_KEY } from './support/harness.ts';
 import { BAR, ground } from './support/ground.ts';
 
 const A = deviceId(1);
@@ -188,8 +189,10 @@ test('through the engine: a paused device commits edits locally and publishes th
       connect: () => connectRoot(root),
       local,
       bookmarks: fakeBookmarks(browser, itemIds(name)),
+      readingList: readingListChannel(new FakeReadingList()),
+      profile: null,
       history: { source: new FakeHistory(), sink: memorySink(), local: memoryLogLocal() },
-      codec: gzipJson,
+      extensions: { read: async () => null },
       clock,
       platform: 'mac',
       appVersion: '0.0.0-test',
@@ -198,8 +201,8 @@ test('through the engine: a paused device commits edits locally and publishes th
   };
   const x = device(ground(), 'x');
   const y = device(new FakeBrowser(), 'y');
-  await x.local.reset({ name: 'X', historyOn: false });
-  await y.local.reset({ name: 'Y', historyOn: false });
+  await x.local.reset({ name: 'X', historyOn: false, key: TEST_KEY });
+  await y.local.reset({ name: 'Y', historyOn: false, key: TEST_KEY });
   await x.sync();
   world.tick(1000);
   await y.sync();

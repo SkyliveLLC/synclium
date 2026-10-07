@@ -3,14 +3,16 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { childNames, connectWebdav, labelOf, parseDavUrl, webdavRootIn, webdavStore, type DavUrl, type WebdavConfig } from '../src/webdav-store.ts';
 import { StoreError, noAsks, unbounded, type Store, type StoreFailure } from '../src/ports.ts';
-import { STORE_NAME, gzipJson, keys, shardRel } from '../src/store-format.ts';
+import { STORE_NAME, keys, shardRel } from '../src/store-format.ts';
 import { history } from '../src/history.ts';
 import { dayOf } from '../src/model.ts';
 import { createEngine } from '../src/engine.ts';
 import { deviceId, memoryLocal, memoryLogLocal, memorySink } from './support/memory-local.ts';
 import { FakeBrowser, fakeBookmarks, itemIds } from './support/fake-bookmarks.ts';
 import { FakeHistory } from './support/fake-history.ts';
-import { FakeClock } from './support/harness.ts';
+import { FakeClock, TEST_KEY } from './support/harness.ts';
+import { FakeReadingList } from './support/fake-reading-list.ts';
+import { readingListChannel } from '../src/chrome-reading-list.ts';
 import { BAR, ground } from './support/ground.ts';
 import { FakeDav } from './support/fake-dav.ts';
 
@@ -227,8 +229,10 @@ test('through the engine: two devices sync over WebDAV, and an offline device pu
       connect: async () => ({ access: 'ready', label: labelOf(config), store: webdavStore(config, dav.fetch) }),
       local,
       bookmarks: fakeBookmarks(browser, itemIds(name)),
+      readingList: readingListChannel(new FakeReadingList()),
+      profile: null,
       history: { source: new FakeHistory(), sink: memorySink(), local: memoryLogLocal() },
-      codec: gzipJson,
+      extensions: { read: async () => null },
       clock,
       platform: 'mac',
       appVersion: '0.0.0-test',
@@ -237,8 +241,8 @@ test('through the engine: two devices sync over WebDAV, and an offline device pu
   };
   const x = device(ground(), 'x');
   const y = device(new FakeBrowser(), 'y');
-  await x.local.reset({ name: 'X', historyOn: false });
-  await y.local.reset({ name: 'Y', historyOn: false });
+  await x.local.reset({ name: 'X', historyOn: false, key: TEST_KEY });
+  await y.local.reset({ name: 'Y', historyOn: false, key: TEST_KEY });
   await x.sync();
   world.tick(1000);
   await y.sync();

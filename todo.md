@@ -56,3 +56,19 @@
 - [ ] Unattended sync after restart without opening popup: unverified in e2e (popup open triggers sync-now)
 - [x] Unit 4 WebDAV store: typecheck 0, 95/95, wsgidav store + engine run, e2e/webdav.mjs 11/11 and e2e/folder-store.mjs 19/19 in isolated scratch Helium
 - [ ] WebDAV permission bubble (Connect, Allow access after revoke): needs a human click
+
+## Round 3 roadmap (Conan 2026-10-06)
+1. [x] Encryption: generated sync key, mandatory, every file sealed (manifests too). Typecheck 0, 85/85, both builds ok.
+   - [ ] Verify in real Helium: two-device e2e with the key step (paste key on B, wrong key refused)
+2. [x] Reading list: register type, ids from urls (P8 confirmed the API). Unit + engine tests.
+3. [x] Extensions list: snapshot model, optional `management`, Extensions page with Add -> CWS. Unit + engine tests.
+   - [ ] Real-browser check of the Extensions page (permission prompt needs a click)
+4. [ ] Opt-in full profile mode (Conan: unprotected settings + custom search engines + addresses; single binary, macOS first; write after quit)
+   - [x] Contract: extension/src/profile-mode.ts; design section in DESIGN.md
+   - [x] Companion (companion/): host, apply helper, install, SEA build; 14/14 tests; scratch check (stage while running writes nothing, quit applies 4/4, relaunch keeps, no reset)
+   - [x] Extension side: channels, engine off/on, Advanced UI; 99/99 tests
+   - [x] Integration e2e (extension/e2e/profile-mode.mjs): 15/15 on scratch; courier.mjs regression 14/14
+   - [ ] Real-browser check of the Advanced opt-in UI and the Extensions page (permission prompts need a click)
+   - [ ] Gatekeeper: the binary is ad-hoc signed only; a downloaded copy needs Developer ID signing + notarization (Skylive LLC?)
+   - [ ] Windows/Linux paths for the companion (macOS only now)
+- [x] Fix: emptying the reading list / engines / addresses no longer trips the mass-delete review (emptyReadIsSuspect per type)

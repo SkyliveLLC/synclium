@@ -5,7 +5,24 @@ import { isDeviceId, isItemId, type DeviceId, type Hlc, type ItemId, type Live, 
 import { ackedOf, collectGarbage, diffLive, entryOf, foldLocalChanges, massDelete, materialize, mergeReplicas, tick } from '../src/crdt.ts';
 import { ROOTS, between, bookmarks, isPosition, placeChildren, type Bookmark, type Position } from '../src/bookmarks.ts';
 import { history, visitKey } from '../src/history.ts';
-import { encodeLogShard, encodeManifest, encodeStateFile, gzipJson, open, parseLogShard, parseManifest, parseRel, parseStateFile, seal, type Manifest, type RelName } from '../src/store-format.ts';
+import {
+  FORMAT_VERSION,
+  encodeLogShard,
+  encodeManifest,
+  encodeStateFile,
+  keys,
+  open,
+  openManifest,
+  parseLogShard,
+  parseManifest,
+  parseRel,
+  parseStateFile,
+  seal,
+  sealManifest,
+  type Manifest,
+  type RelName,
+} from '../src/store-format.ts';
+import { cipherFor, formatSyncKey, mintSyncKey, parseSyncKey } from '../src/sync-key.ts';
 
 const dev = (n: number): DeviceId => {
   const id = `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
@@ -19,6 +36,11 @@ const item = (s: string): ItemId => {
 const pos = (s: string): Position => {
   if (!isPosition(s)) throw new Error(s);
   return s;
+};
+const registerRelOf = (name: string): RelName => {
+  const parsed = parseRel(name);
+  if (parsed === null) throw new Error(name);
+  return parsed.rel;
 };
 const A = dev(1);
 const B = dev(2);
@@ -111,11 +133,12 @@ test('mass-delete guard: thresholds on fraction, minimum size, and the empty rea
   const live = (n: number): Live<Bookmark> => new Map(Array.from({ length: n }, (_, i) => [item(`i${i}`), url(`t${i}`, ROOTS.bar, 'a')]));
   const limits = { minItems: 20, fraction: 0.5 };
   const keep = (from: Live<Bookmark>, n: number) => new Map([...from].slice(0, n));
-  assert.equal(massDelete(live(20), keep(live(20), 10), limits), null, 'exactly half is not more than half');
-  assert.deepEqual(massDelete(live(20), keep(live(20), 9), limits), { removed: 11, of: 20 });
-  assert.equal(massDelete(live(10), keep(live(10), 1), limits), null, 'below minItems the fraction does not apply');
-  assert.deepEqual(massDelete(live(10), new Map(), limits), { removed: 10, of: 10 }, 'an empty read of a non-empty profile always trips');
-  assert.equal(massDelete(null, new Map(), limits), null, 'first join never trips');
+  assert.equal(massDelete(live(20), keep(live(20), 10), limits, true), null, 'exactly half is not more than half');
+  assert.deepEqual(massDelete(live(20), keep(live(20), 9), limits, true), { removed: 11, of: 20 });
+  assert.equal(massDelete(live(10), keep(live(10), 1), limits, true), null, 'below minItems the fraction does not apply');
+  assert.deepEqual(massDelete(live(10), new Map(), limits, true), { removed: 10, of: 10 }, 'an empty bookmark read of a non-empty profile always trips');
+  assert.equal(massDelete(live(3), new Map(), limits, false), null, 'emptying a small list on purpose does not');
+  assert.equal(massDelete(null, new Map(), limits, true), null, 'first join never trips');
 });
 
 test('positions: between() keys are strictly ordered with no trailing zero, and placeChildren re-mints only what moved', () => {
@@ -195,18 +218,53 @@ test('adopt: twins pair in order, known ids anchor without re-mapping, and new i
 });
 
 test('store format: a sealed file opens; a byte off, a hash off, or a truncation reads as not-yet', async () => {
-  const sealed = await seal({ hello: 'world' }, gzipJson);
-  assert.deepEqual(await open(sealed.bytes, gzipJson, sealed.entry), { kind: 'ok', body: { hello: 'world' } });
-  assert.equal((await open(sealed.bytes.subarray(0, sealed.bytes.length - 1), gzipJson, sealed.entry)).kind, 'not-yet');
+  const cipher = await cipherFor(mintSyncKey());
+  const at = keys.file(A, registerRelOf('bookmarks.hsync'));
+  const sealed = await seal({ hello: 'world' }, cipher, at);
+  assert.deepEqual(await open(sealed.bytes, cipher, at, sealed.entry), { kind: 'ok', body: { hello: 'world' } });
+  assert.equal((await open(sealed.bytes.subarray(0, sealed.bytes.length - 1), cipher, at, sealed.entry)).kind, 'not-yet');
   const flipped = new Uint8Array(sealed.bytes);
   flipped[flipped.length - 1] = (flipped[flipped.length - 1] ?? 0) ^ 1;
-  assert.equal((await open(flipped, gzipJson, sealed.entry)).kind, 'not-yet');
-  assert.equal((await open(sealed.bytes, gzipJson, { ...sealed.entry, hash: '0'.repeat(64) })).kind, 'not-yet');
+  assert.equal((await open(flipped, cipher, at, sealed.entry)).kind, 'not-yet');
+  assert.equal((await open(sealed.bytes, cipher, at, { ...sealed.entry, hash: '0'.repeat(64) })).kind, 'not-yet');
 });
 
-test('manifest: foreign rels are dropped, a device mismatch rejects the whole manifest, and rel parsing is strict', () => {
+test('encryption: no plaintext in the bytes, another key reads as other-key, and a tag that fails reads as not-yet', async () => {
+  const key = mintSyncKey();
+  const cipher = await cipherFor(key);
+  const at = keys.file(A, registerRelOf('bookmarks.hsync'));
+  const sealed = await seal({ title: 'secret-bookmark-title' }, cipher, at);
+  assert.equal(new TextDecoder().decode(sealed.bytes).includes('secret-bookmark-title'), false, 'the body is not readable without the key');
+  assert.equal((await cipherFor(key)).keyId, cipher.keyId, 'the key id is a function of the key');
+  assert.deepEqual(await open(sealed.bytes, await cipherFor(mintSyncKey()), at, null), { kind: 'other-key' });
+  // Another device's file copied into A's folder, under the same key: the path is authenticated.
+  const elsewhere = keys.file(B, registerRelOf('bookmarks.hsync'));
+  assert.equal((await open(sealed.bytes, cipher, elsewhere, null)).kind, 'not-yet', 'a file moved to another path does not open');
+  // A forged header claiming our key over someone else's ciphertext, without a manifest to vouch: the tag fails.
+  const body = sealed.bytes.subarray(sealed.bytes.indexOf(0x0a) + 1);
+  const forged = new Uint8Array([...new TextEncoder().encode(`{"codec":"a256gcm-gzip-json","formatVersion":${FORMAT_VERSION},"key":"${cipher.keyId}","magic":"helium-sync","x":1}\n`), ...body]);
+  assert.equal((await open(forged, cipher, at, null)).kind, 'not-yet', 'the header is authenticated');
+});
+
+test('sync key: format and parse round-trip, typing slips are forgiven, and anything else is refused', () => {
+  const key = mintSyncKey();
+  const shown = formatSyncKey(key);
+  assert.match(shown, /^HSK(-[0-9A-HJKMNP-TV-Z]{4}){13}$/);
+  assert.equal(parseSyncKey(shown), key);
+  assert.equal(parseSyncKey(shown.toLowerCase().replace(/-/g, ' ')), key, 'case and spaces');
+  assert.equal(parseSyncKey(key), key, 'without prefix or dashes');
+  assert.equal(parseSyncKey(` ${shown.replace(/0/g, 'O').replace(/1/g, 'l')}\n`), key, 'O for 0 and l for 1');
+  assert.equal(parseSyncKey(shown.slice(0, -1)), null, 'a digit short');
+  assert.equal(parseSyncKey(`${shown}0`), null, 'a digit long');
+  assert.equal(parseSyncKey(shown.replace(/.$/, 'U')), null, 'U is not a digit');
+  // 256 bits fill 51 digits and one bit of the 52nd, so the last digit is 0 or G; 1 sets a pad bit.
+  assert.match(key, /[0G]$/);
+  assert.equal(parseSyncKey(key.slice(0, -1) + '1'), null, 'nonzero pad bits are not canonical');
+});
+
+test('manifest: sealed for its own path, foreign rels are dropped, a device mismatch rejects it, and rel parsing is strict', async () => {
   const m: Manifest = {
-    formatVersion: 1,
+    formatVersion: FORMAT_VERSION,
     device: A,
     name: 'Mac',
     platform: 'mac',
@@ -218,14 +276,16 @@ test('manifest: foreign rels are dropped, a device mismatch rejects the whole ma
       [parseRel('history/2026-10-06.hsync')!.rel, { hash: 'b'.repeat(64), bytes: 2 }],
     ]),
   };
-  const bytes = encodeManifest(m);
-  const back = parseManifest(bytes, A);
-  assert.deepEqual(back, m);
-  assert.equal(parseManifest(bytes, B), null, 'a manifest in another device\'s folder is not trusted');
-  const withForeign = JSON.parse(new TextDecoder().decode(bytes)) as { files: Record<string, unknown> };
+  const cipher = await cipherFor(mintSyncKey());
+  const sealed = await sealManifest(m, cipher);
+  assert.deepEqual(await openManifest(sealed, A, cipher), { kind: 'ok', manifest: m });
+  assert.equal((await openManifest(sealed, B, cipher)).kind, 'not-yet', 'a manifest copied into another device\'s folder does not open');
+  const body = encodeManifest(m);
+  assert.equal(parseManifest(body, B), null, 'a manifest naming another device is not trusted');
+  const withForeign = JSON.parse(JSON.stringify(body)) as { files: Record<string, unknown> };
   withForeign.files['../../etc/passwd'] = { hash: 'c'.repeat(64), bytes: 3 };
   withForeign.files['bookmarks.hsync (conflicted copy)'] = { hash: 'c'.repeat(64), bytes: 3 };
-  assert.equal(parseManifest(new TextEncoder().encode(JSON.stringify(withForeign)), A)?.files.size, 2, 'foreign names never become fetch targets');
+  assert.equal(parseManifest(withForeign, A)?.files.size, 2, 'foreign names never become fetch targets');
   assert.equal(parseRel('History/2026-10-06.hsync'), null);
   assert.equal(parseRel('history/2026-10-6.hsync'), null);
 });

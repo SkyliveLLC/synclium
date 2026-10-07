@@ -1,9 +1,13 @@
 // The seams. engine.ts and the two cycle modules import these and the pure modules, never chrome.*, File
 // System Access, or IndexedDB, so a whole cycle runs in a Node test against in-memory fakes.
-import type { DayKey, DeviceId, Ev, EventKey, HlcState, Live, Rec, Replica, ItemId } from './model.ts';
+import type { DayKey, DeviceId, Ev, EventKey, HlcState, Json, Live, Rec, Replica, ItemId } from './model.ts';
 import type { Acked } from './crdt.ts';
 import type { Bookmark } from './bookmarks.ts';
+import type { ReadingItem } from './reading-list.ts';
+import type { ExtensionList } from './extensions.ts';
+import type { Address, SearchEngine, Setting } from './profile-mode.ts';
 import type { Manifest, RelName, StateFile, StoreKey } from './store-format.ts';
+import type { SyncKey } from './sync-key.ts';
 
 // ---------- Store ----------
 
@@ -73,8 +77,12 @@ export const statusOf = (conn: StoreConnection): StoreStatus => (conn.access ===
 
 /** Inside the extension Helium always runs and the API always writes, so there are no session modes. */
 export interface RegisterChannel<R extends Rec> {
-  /** Current profile content keyed by ItemId. Unknown local nodes get a freshly minted, persisted ItemId. */
-  read(previous: Live<R> | null): Promise<Live<R>>;
+  /**
+   * Current profile content keyed by ItemId. Unknown local nodes get a freshly minted, persisted ItemId.
+   * Null when the profile cannot show this type right now (full profile mode on an unchecked Web Data
+   * version): the type sits the cycle out, keeping its state and its published file.
+   */
+  read(previous: Live<R> | null): Promise<Live<R> | null>;
   /** Local ItemId `from` is synced ItemId `to` (from adoption). Persisted before returning. */
   bind(aliases: ReadonlyMap<ItemId, ItemId>): Promise<void>;
   /**
@@ -83,6 +91,13 @@ export interface RegisterChannel<R extends Rec> {
    */
   apply(change: { readonly current: Live<R>; readonly target: Live<R> }, budget: Budget): Promise<ApplyResult>;
 }
+
+/** Full profile mode's three types, through the companion (chrome-profile.ts). Absent while the mode is off. */
+export type ProfileChannels = {
+  readonly settings: RegisterChannel<Setting>;
+  readonly searchEngines: RegisterChannel<SearchEngine>;
+  readonly addresses: RegisterChannel<Address>;
+};
 
 export type ApplyResult =
   | { readonly kind: 'applied' }
@@ -113,6 +128,14 @@ export interface LogSink<E extends Ev> {
 
 export type LogPorts<E extends Ev> = { readonly source: LogSource<E>; readonly sink: LogSink<E>; readonly local: LogLocal<E> };
 
+// ---------- Profile side: snapshot types ----------
+
+/** Read-only. This device's own state for one snapshot type. */
+export interface SnapshotSource<S extends Json> {
+  /** Null when it cannot be read (a permission the user has not granted): nothing is published. */
+  read(): Promise<S | null>;
+}
+
 // ---------- Device-private state ----------
 
 /** IndexedDB in the extension (local.ts). Written only by the service worker, inside the cycle lock. */
@@ -122,7 +145,7 @@ export interface LocalState {
   /** One IndexedDB transaction. */
   save(next: DeviceLocal): Promise<void>;
   /** New DeviceId and empty sync state; keeps the chrome id map. Setup's Start, change folder, idle rejoin. */
-  reset(setup: { readonly name: string; readonly historyOn: boolean }): Promise<DeviceLocal>;
+  reset(setup: Setup): Promise<DeviceLocal>;
   /** Forget this device: clears everything but the chrome id map, so `load` returns null. */
   clear(): Promise<void>;
 }
@@ -140,10 +163,16 @@ export type Asks = {
 
 export const noAsks: Asks = { rederiveHistory: 0, applyDeletions: 0 };
 
-export type DeviceLocal = {
-  readonly device: DeviceId;
+/** What the user chose at setup. Survives an idle rejoin; Change folder chooses again. */
+export type Setup = {
   readonly name: string;
   readonly historyOn: boolean;
+  /** Shared by every device in the folder. Never written to the store. */
+  readonly key: SyncKey;
+};
+
+export type DeviceLocal = Setup & {
+  readonly device: DeviceId;
   readonly clock: HlcState;
   readonly lastSeen: number | null;
   /** Seq of the last manifest this device put. */
@@ -153,15 +182,23 @@ export type DeviceLocal = {
   readonly peers: ReadonlyMap<DeviceId, PeerLocal>;
   readonly handled: Asks;
   readonly bookmarks: RegisterLocal<Bookmark> | null;
+  readonly readingList: RegisterLocal<ReadingItem> | null;
+  readonly settings: RegisterLocal<Setting> | null;
+  readonly searchEngines: RegisterLocal<SearchEngine> | null;
+  readonly addresses: RegisterLocal<Address> | null;
   readonly history: LogCursor;
+  readonly extensions: SnapshotLocal<ExtensionList> | null;
+  /** The Helium profile directory full profile mode writes ("Default"). Null: the mode is off on this device. */
+  readonly profile: { readonly dir: string } | null;
 };
 
 /** The state a device starts with after setup, a folder change, or an idle rejoin. */
-export function freshDeviceLocal(device: DeviceId, setup: { readonly name: string; readonly historyOn: boolean }, history: LogCursor): DeviceLocal {
+export function freshDeviceLocal(device: DeviceId, setup: Setup, history: LogCursor): DeviceLocal {
   return {
     device,
     name: setup.name,
     historyOn: setup.historyOn,
+    key: setup.key,
     clock: { wall: 0, counter: 0 },
     lastSeen: null,
     manifestSeq: 0,
@@ -169,7 +206,13 @@ export function freshDeviceLocal(device: DeviceId, setup: { readonly name: strin
     peers: new Map(),
     handled: noAsks,
     bookmarks: null,
+    readingList: null,
+    settings: null,
+    searchEngines: null,
+    addresses: null,
     history,
+    extensions: null,
+    profile: null,
   };
 }
 
@@ -191,6 +234,9 @@ export type RegisterLocal<R extends Rec> = {
   /** Per peer, the last file that matched its manifest and passed the seq check. */
   readonly peers: ReadonlyMap<DeviceId, { readonly seq: number; readonly hash: string; readonly lastGood: StateFile<R> }>;
 };
+
+/** Each live peer's last good snapshot, by the manifest hash it came from. */
+export type SnapshotLocal<S extends Json> = { readonly peers: ReadonlyMap<DeviceId, { readonly hash: string; readonly content: S }> };
 
 export type LogCursor = {
   /** Events before this are in own days. The next scan re-reads `slackMs` before it (Chromium commits in ~10 s batches). */

@@ -1,38 +1,59 @@
 // What the two extension pages say, and how they talk to the worker. Pure, apart from `ask` and `readShown`,
 // so the view model runs in a Node test. The DOM lives in app.ts and popup.ts.
 //   popup.html  status at a glance, [Sync now], and the one button the status calls for
-//   app.html    (options page, a tab) setup, status detail, history search, review, advanced
-// Anything that needs a user gesture (the folder picker, a folder re-grant, a WebDAV host permission) happens
-// in app.html, never the popup: the picker and Chromium's permission bubbles take focus, the popup closes, and a
-// request tied to a closed frame is cancelled.
+//   app.html    (options page, a tab) setup, status detail, history search, extensions, review, advanced
+//               (full profile mode's opt-in lives in advanced)
+// Anything that needs a user gesture (the folder picker, a folder re-grant, a WebDAV host permission, the
+// optional `management` and `nativeMessaging` grants) happens in app.html, never the popup: the picker and
+// Chromium's permission bubbles take focus, the popup closes, and a request tied to a closed frame is cancelled.
 //
 // Status flows one way. The worker writes `Shown` to chrome.storage.local; pages render it and re-render on
 // storage.onChanged. Pages never run the engine and never write its state; they ask.
 import type { JoinPreview, LogOutcome, RegisterOutcome, SyncReport, Warning } from './engine.ts';
 import type { StoreFailure, StoreStatus } from './ports.ts';
+import type { HelloReply } from './profile-mode.ts';
 import type { RemoteVisit } from './local.ts';
 import type { Platform } from './store-format.ts';
+import type { SyncKey } from './sync-key.ts';
 
 type Empty = Record<never, never>;
 
 /** The device name setup suggests. */
 export const DEVICE_NAMES = { mac: 'Mac', win: 'Windows PC', linux: 'Linux PC' } as const satisfies Record<Platform, string>;
 
-export type StartResult = { readonly kind: 'started' } | { readonly kind: 'not-ready'; readonly store: StoreStatus };
+export type StartResult =
+  | { readonly kind: 'started' }
+  | { readonly kind: 'not-ready'; readonly store: StoreStatus }
+  /** Devices in the folder sync under another key. */
+  | { readonly kind: 'wrong-key' };
 
 /** Page -> worker protocol: request fields and reply, one entry per message. Single source for both types below. */
 type Protocol = {
   'sync-now': { req: Empty; res: null };
-  /** Dry run against the `candidate` store. Setup's second screen. */
-  preview: { req: Empty; res: JoinPreview };
-  /** Promote `candidate`, mint the DeviceId, request the first cycle. Refused unless the candidate probes ok. */
-  start: { req: { readonly name: string; readonly historyOn: boolean }; res: StartResult };
+  /** Dry run against the `candidate` store with the key setup holds: a fresh one, or the one the user pasted. */
+  preview: { req: { readonly key: SyncKey }; res: JoinPreview };
+  /** Promote `candidate`, mint the DeviceId, request the first cycle. Refused unless the candidate probes ok and the key matches. */
+  start: { req: { readonly name: string; readonly historyOn: boolean; readonly key: SyncKey }; res: StartResult };
+  /** This device's sync key, for adding another device. Null before setup. */
+  'show-key': { req: Empty; res: SyncKey | null };
   'set-history': { req: { readonly on: boolean }; res: null };
   /** After the user reviewed a blocked mass delete. Bumps the durable `applyDeletions` ask. */
   'apply-deletions': { req: Empty; res: null };
   'check-store': { req: Empty; res: StoreStatus };
   'search-history': { req: { readonly query: string }; res: readonly RemoteVisit[] };
   'forget-this-device': { req: Empty; res: null };
+  /** Full profile mode's steps for Advanced. Asks the companion for `hello` on the spot when the grant is there. */
+  'profile-status': { req: Empty; res: ProfileSetup };
+  /** A profile directory turns full profile mode on for it; null turns it off. Requests a sync. */
+  'set-profile-mode': { req: { readonly dir: string | null }; res: null };
+};
+
+/** What Advanced needs to show the next step: grant, install, pick a profile, or on. `error` says why `hello` failed. */
+export type ProfileSetup = {
+  readonly permission: boolean;
+  readonly hello: HelloReply | null;
+  readonly error: string | null;
+  readonly on: { readonly dir: string } | null;
 };
 export type UiMessage = { [K in keyof Protocol]: { readonly kind: K } & Protocol[K]['req'] }[keyof Protocol];
 export type UiReply<M extends UiMessage> = Protocol[M['kind']]['res'];
@@ -51,12 +72,22 @@ export async function ask<M extends UiMessage>(message: M): Promise<UiReply<M>> 
 
 export const SHOWN_KEY = 'shown';
 
+/**
+ * Full profile mode as the last cycle found it. `unavailable`: the mode is on here but the companion could not
+ * be used, so the three types sat the cycle out. `pending` counts staged changes waiting for Helium to quit.
+ */
+export type ProfileStatus =
+  | { readonly kind: 'off' }
+  | { readonly kind: 'unavailable'; readonly why: 'no-permission' | 'no-companion' | 'protocol-mismatch' }
+  | { readonly kind: 'on'; readonly profile: string; readonly pending: number; readonly webData: 'ok' | 'unsupported' };
+
 /** chrome.storage.local[SHOWN_KEY]. `failure` is a cycle that threw; the scheduler retries it with backoff. */
 export type Shown = {
   readonly report: SyncReport | null;
   readonly failure: { readonly at: number; readonly message: string } | null;
+  readonly profile: ProfileStatus;
 };
-export const nothingShown: Shown = { report: null, failure: null };
+export const nothingShown: Shown = { report: null, failure: null, profile: { kind: 'off' } };
 
 type Stored = Shown & { readonly app: string };
 
@@ -89,9 +120,9 @@ export type StatusView =
   | { readonly kind: 'paused'; readonly label: string; readonly why: StoreFailure }
   /** "Another copy of this profile syncs as this device." */
   | { readonly kind: 'clash' }
-  | { readonly kind: 'review'; readonly removed: number; readonly of: number; readonly sample: readonly string[] }
-  /** A peer writes a bookmark format this version cannot read. Bookmarks wait for an update. */
-  | { readonly kind: 'outdated' }
+  | { readonly kind: 'review'; readonly what: Synced; readonly removed: number; readonly of: number; readonly sample: readonly string[] }
+  /** A peer writes a format of `what` this version cannot read. It waits for an update. */
+  | { readonly kind: 'outdated'; readonly what: Synced }
   | {
       readonly kind: 'ok';
       readonly lastSync: number;
@@ -102,6 +133,20 @@ export type StatusView =
       /** Warnings, listed in app.html#status. */
       readonly problems: number;
     };
+
+/** The register types, in the words the pages use: one, many, and the subject of a sentence. */
+export type Synced = 'bookmarks' | 'reading-list' | 'settings' | 'search-engines' | 'addresses';
+const WORDS = {
+  bookmarks: ['bookmark', 'bookmarks', 'Bookmarks are'],
+  'reading-list': ['reading list entry', 'reading list entries', 'The reading list is'],
+  settings: ['setting', 'settings', 'Settings are'],
+  'search-engines': ['search engine', 'search engines', 'Search engines are'],
+  addresses: ['address', 'addresses', 'Addresses are'],
+} as const satisfies Record<Synced, readonly [string, string, string]>;
+export function nounFor(what: Synced, n: number): string {
+  const [one, many] = WORDS[what];
+  return plural(n, one, many);
+}
 
 export function viewOf({ report, failure }: Shown): StatusView {
   if (failure !== null && (report === null || failure.at >= report.at)) return { kind: 'error', message: failure.message };
@@ -118,23 +163,45 @@ export function viewOf({ report, failure }: Shown): StatusView {
       return unreachable;
     }
   }
-  const { store, bookmarks, history } = report;
+  const { store, history } = report;
   if (store.access === 'failed') return { kind: 'paused', label: store.label, why: store.why };
   if (store.access === 'not-set-up') return { kind: 'paused', label: '', why: { kind: 'missing' } };
-  if (bookmarks.kind === 'blocked') {
-    const { why } = bookmarks;
-    return why.kind === 'mass-delete' ? { kind: 'review', removed: why.removed.removed, of: why.of, sample: why.removed.sample } : { kind: 'outdated' };
+  const registers = [
+    ['bookmarks', report.bookmarks],
+    ['reading-list', report.readingList],
+    ['settings', report.settings],
+    ['search-engines', report.searchEngines],
+    ['addresses', report.addresses],
+  ] as const satisfies readonly (readonly [Synced, RegisterOutcome])[];
+  let pending = false;
+  for (const [what, outcome] of registers) {
+    switch (outcome.kind) {
+      case 'blocked': {
+        const { why } = outcome;
+        return why.kind === 'mass-delete' ? { kind: 'review', what, removed: why.removed.removed, of: why.of, sample: why.removed.sample } : { kind: 'outdated', what };
+      }
+      case 'pending':
+        pending = true;
+        break;
+      case 'synced':
+      case 'off':
+        break;
+      default: {
+        const unreachable: never = outcome;
+        return unreachable;
+      }
+    }
   }
   return {
     kind: 'ok',
     lastSync: report.at,
     devices: report.peers.filter((peer) => !peer.idle).length,
-    catchingUp: !report.complete || bookmarks.kind === 'pending' || (history.kind === 'synced' && history.deriveDaysLeft > 0),
+    catchingUp: !report.complete || pending || (history.kind === 'synced' && history.deriveDaysLeft > 0),
     problems: report.warnings.length,
   };
 }
 
-export type AppPage = 'app.html#setup' | 'app.html#allow' | 'app.html#status' | 'app.html#review' | 'app.html#history' | 'app.html#advanced';
+export type AppPage = 'app.html#setup' | 'app.html#allow' | 'app.html#status' | 'app.html#review' | 'app.html#history' | 'app.html#extensions' | 'app.html#advanced';
 
 /** `opens: null` means "ask the worker to sync now". */
 export type Action = { readonly label: string; readonly opens: AppPage | null };
@@ -220,15 +287,44 @@ export function statusSentence(view: StatusView, now: number): string {
     case 'clash':
       return 'Another copy of this profile syncs as this device.';
     case 'review':
-      return `Paused: this would delete ${plural(view.removed, 'bookmark')}.`;
+      return `Paused: this would delete ${nounFor(view.what, view.removed)}.`;
     case 'outdated':
-      return 'Bookmarks are paused: another device runs a newer Synclium. Update this one.';
+      return `${WORDS[view.what][2]} paused: another device runs a newer Synclium. Update this one.`;
     case 'ok': {
       const others = view.devices === 0 ? 'no other devices yet' : plural(view.devices, 'other device');
       return `Synced ${ago(now - view.lastSync)} with ${others}.${view.catchingUp ? ' Catching up.' : ''}`;
     }
     default: {
       const unreachable: never = view;
+      return unreachable;
+    }
+  }
+}
+
+/** Full profile mode's line on the status page and in Advanced. '' while the mode is off. */
+export function profileSentence(status: ProfileStatus): string {
+  switch (status.kind) {
+    case 'off':
+      return '';
+    case 'unavailable':
+      switch (status.why) {
+        case 'no-permission':
+          return 'Full profile mode is paused: Synclium is not allowed to talk to the companion.';
+        case 'no-companion':
+          return "Full profile mode is paused: the companion isn't installed or didn't answer.";
+        case 'protocol-mismatch':
+          return 'Full profile mode is paused: the companion comes from another Synclium version. Install the matching one.';
+        default: {
+          const unreachable: never = status.why;
+          return unreachable;
+        }
+      }
+    case 'on': {
+      const waiting = status.pending > 0 ? `${plural(status.pending, 'change')} will be written after Helium quits.` : 'Full profile mode is on. Nothing is waiting for Helium to quit.';
+      return status.webData === 'ok' ? waiting : `${waiting} Search engines and addresses wait for a Synclium update that knows this Helium version.`;
+    }
+    default: {
+      const unreachable: never = status;
       return unreachable;
     }
   }
@@ -287,6 +383,8 @@ export function bookmarksFact(outcome: RegisterOutcome): Fact {
       return outcome.why.kind === 'mass-delete'
         ? { value: 'Waiting for review', detail: `Would delete ${outcome.why.removed.removed} of ${outcome.why.of}.` }
         : { value: 'Waiting for update', detail: 'Another device writes a newer format.' };
+    case 'off':
+      return { value: 'Off', detail: 'Not synced on this device.' };
     default: {
       const unreachable: never = outcome;
       return unreachable;
@@ -336,10 +434,32 @@ export function previewSentence(preview: JoinPreview): string {
       return preview.store.access === 'failed' ? failureSentence(preview.store.label, preview.store.why) : 'Choose a folder or a WebDAV server first.';
     case 'first-device':
       return `New sync folder. ${plural(preview.bookmarks, 'bookmark')} will be shared.`;
+    case 'needs-key':
+      return `${plural(preview.devices, 'device')} already ${preview.devices === 1 ? 'syncs' : 'sync'} here. Enter the sync key from one of them.`;
     case 'joining': {
       const { matched, toAdd, toPublish } = preview.bookmarks;
       return `Joining ${preview.peers.join(', ')}. ${plural(matched, 'bookmark')} already match, ${toAdd} will be added here, ${toPublish} will be shared.`;
     }
+    default: {
+      const unreachable: never = preview;
+      return unreachable;
+    }
+  }
+}
+
+/** What setup's key step says under the key. `entered` is what the key field holds: nothing, not a key, or a key. */
+export function keyNote(preview: JoinPreview, entered: 'nothing' | 'not-a-key' | 'key'): string {
+  switch (preview.kind) {
+    case 'not-ready':
+      return '';
+    case 'first-device':
+      return 'Only devices with this key can read the folder. You can show it again under Advanced.';
+    case 'needs-key':
+      if (entered === 'nothing') return 'On one of your other devices, open Synclium, then Settings, then Show sync key.';
+      if (entered === 'not-a-key') return "That isn't a sync key. It starts with HSK- and has 13 groups of 4 characters.";
+      return "That key doesn't match the devices in this folder.";
+    case 'joining':
+      return 'The key matches.';
     default: {
       const unreachable: never = preview;
       return unreachable;
@@ -358,6 +478,8 @@ export function warningSentence(warning: Warning, nameOf: (device: string) => st
       return `${nameOf(warning.peer)} uses a file format this version can't read (${warning.codec}).`;
     case 'newer-version':
       return `${nameOf(warning.peer)} runs a newer Synclium; ${warning.file} is skipped until this one updates.`;
+    case 'other-key':
+      return 'A device in the sync folder uses a different sync key. It is ignored.';
     case 'foreign-file':
       return `An unexpected file "${warning.name}" is in the sync folder. It is ignored.`;
     case 'rejoined':

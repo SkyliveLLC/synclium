@@ -1,15 +1,21 @@
 // The only module that knows store key names and bytes.
 //
 // Layout. Every key has exactly one writer, so a dumb sync folder never sees a write-write conflict.
-//   devices/<deviceId>/manifest.json                  Manifest, plain JSON. The commit point.
+//   devices/<deviceId>/manifest.json                  envelope + body: Manifest. The commit point.
 //   devices/<deviceId>/bookmarks.hsync                envelope + body: StateFile (full merged register state)
+//   devices/<deviceId>/reading-list.hsync             envelope + body: StateFile
+//   devices/<deviceId>/extensions.hsync               envelope + body: SnapshotFile (this device's own list)
 //   devices/<deviceId>/history/<yyyy-mm-dd>.hsync     envelope + body: LogShard (this author's visits, one UTC day)
 //
 // The manifest is the commit point. A device writes its files first and its manifest last. A reader verifies
 // every file against the manifest's hash before parsing, so a torn write, an iCloud placeholder, or a
 // half-synced Dropbox file reads as "not yet" and the last good copy stands.
 //
-// `.hsync`, not `.json.gz`: the bytes are a plaintext header line plus a gzip body, which no gzip tool opens.
+// Every body is encrypted with the sync key (sync-key.ts). What the folder shows in the clear: device ids,
+// which files exist (so which UTC days have history), their sizes, and when they change. The manifest is
+// sealed too, so device names, the file list, and lastSeen are not.
+//
+// `.hsync`, not `.json.gz`: the bytes are a plaintext header line plus an encrypted gzip body.
 import {
   dayRange,
   isDayKey,
@@ -29,11 +35,12 @@ import {
   type Reg,
   type RegisterType,
   type Replica,
+  type SnapshotType,
 } from './model.ts';
 import { entryWith, type Acked } from './crdt.ts';
 
 export type StoreKey = Brand<string, 'StoreKey'>;
-/** A file name relative to `devices/<id>/`. Minted only by `registerRel`, `shardRel`, and `parseRel`. */
+/** A file name relative to `devices/<id>/`. Minted only by `fileRel`, `shardRel`, and `parseRel`. */
 export type RelName = Brand<string, 'RelName'>;
 
 export const DEVICES_PREFIX = 'devices/';
@@ -51,7 +58,8 @@ export const keys = {
   file: (device: DeviceId, rel: RelName): StoreKey => `${DEVICES_PREFIX}${device}/${rel}` as StoreKey,
 };
 
-export function registerRel(type: RegisterType<Rec>): RelName {
+/** A register or snapshot type's one file. */
+export function fileRel(type: { readonly name: string }): RelName {
   return `${type.name}${EXT}` as RelName;
 }
 export function shardRel(type: LogType<Ev>, day: DayKey): RelName {
@@ -60,12 +68,12 @@ export function shardRel(type: LogType<Ev>, day: DayKey): RelName {
 
 /** Strict. Anything else in a peer's manifest is dropped as foreign and never fetched. */
 export type ParsedRel =
-  | { readonly kind: 'register'; readonly type: string; readonly rel: RelName }
+  | { readonly kind: 'file'; readonly type: string; readonly rel: RelName }
   | { readonly kind: 'shard'; readonly type: string; readonly day: DayKey; readonly rel: RelName };
 
 export function parseRel(name: string): ParsedRel | null {
   const register = REGISTER_REL.exec(name);
-  if (register?.[1] !== undefined) return { kind: 'register', type: register[1], rel: name as RelName };
+  if (register?.[1] !== undefined) return { kind: 'file', type: register[1], rel: name as RelName };
   const shard = SHARD_REL.exec(name);
   if (shard?.[1] !== undefined && shard[2] !== undefined && isDayKey(shard[2])) return { kind: 'shard', type: shard[1], day: shard[2], rel: name as RelName };
   return null;
@@ -149,12 +157,11 @@ function parseFileEntry(raw: unknown): FileEntry | null {
   return typeof hash === 'string' && HEX64.test(hash) && isCount(bytes) ? { hash, bytes } : null;
 }
 
-/** Plain JSON on purpose: it holds no profile data, and the setup preview lists peers without a codec. */
-export function encodeManifest(m: Manifest): Uint8Array {
+/** The manifest as a body. `sealManifest` is what goes in the store. */
+export function encodeManifest(m: Manifest): Json {
   const files: { [rel: string]: Json } = {};
   for (const [rel, entry] of m.files) files[rel] = { hash: entry.hash, bytes: entry.bytes };
-  return utf8.encode(
-    canonicalJson({
+  return {
       formatVersion: m.formatVersion,
       device: m.device,
       name: m.name,
@@ -163,13 +170,11 @@ export function encodeManifest(m: Manifest): Uint8Array {
       seq: m.seq,
       lastSeen: m.lastSeen,
       files,
-    }),
-  );
+  };
 }
 
 /** Null when malformed or when its `device` disagrees with the folder it sits in. Foreign rels are dropped. */
-export function parseManifest(bytes: Uint8Array, at: DeviceId): Manifest | null {
-  const raw = parseJson(bytes);
+export function parseManifest(raw: unknown, at: DeviceId): Manifest | null {
   if (!isRecord(raw) || raw['formatVersion'] !== FORMAT_VERSION || raw['device'] !== at) return null;
   const { name, platform, app, seq, lastSeen, files } = raw;
   if (typeof name !== 'string' || typeof platform !== 'string' || !isPlatform(platform)) return null;
@@ -184,6 +189,20 @@ export function parseManifest(bytes: Uint8Array, at: DeviceId): Manifest | null 
   return { formatVersion: FORMAT_VERSION, device: at, name, platform, app: { name: 'helium-sync', version: app['version'] }, seq, lastSeen, files: parsedFiles };
 }
 
+export async function sealManifest(m: Manifest, cipher: Cipher): Promise<Uint8Array> {
+  return (await seal(encodeManifest(m), cipher, keys.manifest(m.device))).bytes;
+}
+
+/** A manifest has no manifest above it, so nothing vouches for its hash: the GCM tag alone says it is whole. */
+export type ManifestOpened = { readonly kind: 'ok'; readonly manifest: Manifest } | Exclude<Opened, { readonly kind: 'ok' }>;
+
+export async function openManifest(bytes: Uint8Array, at: DeviceId, cipher: Cipher): Promise<ManifestOpened> {
+  const opened = await open(bytes, cipher, keys.manifest(at), null);
+  if (opened.kind !== 'ok') return opened;
+  const manifest = parseManifest(opened.body, at);
+  return manifest === null ? { kind: 'not-yet', detail: 'bad manifest' } : { kind: 'ok', manifest };
+}
+
 function parseJson(bytes: Uint8Array): unknown {
   try {
     return JSON.parse(fromUtf8.decode(bytes));
@@ -192,18 +211,23 @@ function parseJson(bytes: Uint8Array): unknown {
   }
 }
 
-// ---------- Envelope and codec ----------
-//   {"magic":"helium-sync","formatVersion":1,"codec":"gzip-json"}\n<body bytes>
-// The header stays plaintext under every codec, so encryption later is a new CodecId plus pairing.
+// ---------- Envelope ----------
+//   {"codec":"a256gcm-gzip-json","formatVersion":2,"key":"<keyId>","magic":"helium-sync"}\n<iv ‖ ciphertext ‖ tag>
+// The plaintext is gzip(canonical JSON). The header stays readable, so a reader can tell another key or a newer
+// format from damage before decrypting. The header and the file's store key are the GCM associated data: a
+// reader opens bytes only at the path they were sealed for, under the header they were sealed with.
 
-export const FORMAT_VERSION = 1;
+export const FORMAT_VERSION = 2;
 const MAGIC = 'helium-sync';
-export type CodecId = 'gzip-json';
+const CODEC = 'a256gcm-gzip-json';
 
-export interface Codec {
-  readonly id: CodecId;
-  encode(body: Json): Promise<Uint8Array>;
-  decode(bytes: Uint8Array): Promise<{ readonly ok: true; readonly body: unknown } | { readonly ok: false; readonly detail: string }>;
+/** Seals and opens bodies. sync-key.ts `cipherFor` builds the only one; nothing in the store is plaintext. */
+export interface Cipher {
+  /** A non-secret fingerprint of the key, in every header. */
+  readonly keyId: string;
+  seal(plain: Uint8Array, aad: Uint8Array): Promise<Uint8Array>;
+  /** Null when the tag does not verify: wrong key, tampered, torn, or moved from another path. */
+  open(sealed: Uint8Array, aad: Uint8Array): Promise<Uint8Array | null>;
 }
 
 async function pipe(bytes: Uint8Array, stream: CompressionStream | DecompressionStream): Promise<Uint8Array> {
@@ -211,52 +235,60 @@ async function pipe(bytes: Uint8Array, stream: CompressionStream | Decompression
   return new Uint8Array(out);
 }
 
-/** Canonical JSON (sorted keys) through CompressionStream('gzip'). Runs in the service worker and in Node 24. */
-export const gzipJson: Codec = {
-  id: 'gzip-json',
-  encode: (body) => pipe(utf8.encode(canonicalJson(body)), new CompressionStream('gzip')),
-  decode: async (bytes) => {
-    try {
-      const plain = await pipe(bytes, new DecompressionStream('gzip'));
-      return { ok: true, body: JSON.parse(fromUtf8.decode(plain)) };
-    } catch (error) {
-      return { ok: false, detail: String(error) };
-    }
-  },
-};
+function associated(header: Uint8Array, at: StoreKey): Uint8Array {
+  const path = utf8.encode(at);
+  const aad = new Uint8Array(header.length + path.length);
+  aad.set(header, 0);
+  aad.set(path, header.length);
+  return aad;
+}
 
-/** The sealed bytes and the manifest entry that vouches for them. */
-export async function seal(body: Json, codec: Codec): Promise<{ readonly bytes: Uint8Array; readonly entry: FileEntry }> {
-  const header = utf8.encode(`${JSON.stringify({ magic: MAGIC, formatVersion: FORMAT_VERSION, codec: codec.id })}\n`);
-  const encoded = await codec.encode(body);
-  const bytes = new Uint8Array(header.length + encoded.length);
+/** The sealed bytes for `at`, and the manifest entry that vouches for them. */
+export async function seal(body: Json, cipher: Cipher, at: StoreKey): Promise<{ readonly bytes: Uint8Array; readonly entry: FileEntry }> {
+  const header = utf8.encode(`${canonicalJson({ magic: MAGIC, formatVersion: FORMAT_VERSION, codec: CODEC, key: cipher.keyId })}\n`);
+  const plain = await pipe(utf8.encode(canonicalJson(body)), new CompressionStream('gzip'));
+  const sealed = await cipher.seal(plain, associated(header, at));
+  const bytes = new Uint8Array(header.length + sealed.length);
   bytes.set(header, 0);
-  bytes.set(encoded, header.length);
+  bytes.set(sealed, header.length);
   return { bytes, entry: { hash: await sha256(bytes), bytes: bytes.length } };
 }
 
 export type Opened =
   | { readonly kind: 'ok'; readonly body: unknown }
-  /** Hash mismatch (torn, placeholder, half-synced) or garbage. Means "not yet", never "deleted". */
+  /** Hash mismatch (torn, placeholder, half-synced), a tag that fails, or garbage. Means "not yet", never "deleted". */
   | { readonly kind: 'not-yet'; readonly detail: string }
   | { readonly kind: 'newer-format'; readonly formatVersion: number }
-  | { readonly kind: 'unknown-codec'; readonly codec: string };
+  | { readonly kind: 'unknown-codec'; readonly codec: string }
+  /** Sealed with a different sync key: another sync group shares the folder. */
+  | { readonly kind: 'other-key' };
 
-/** Never throws on bad input. Checks `expected.hash` over the raw bytes before it reads the header. */
-export async function open(bytes: Uint8Array, codec: Codec, expected: FileEntry): Promise<Opened> {
-  if (bytes.length !== expected.bytes) return { kind: 'not-yet', detail: `${bytes.length} bytes, manifest says ${expected.bytes}` };
-  if ((await sha256(bytes)) !== expected.hash) return { kind: 'not-yet', detail: 'hash mismatch' };
+/**
+ * Never throws on bad input. With `expected`, checks size and hash over the raw bytes before reading the header.
+ * `at` must be the key the bytes were read from.
+ */
+export async function open(bytes: Uint8Array, cipher: Cipher, at: StoreKey, expected: FileEntry | null): Promise<Opened> {
+  if (expected !== null) {
+    if (bytes.length !== expected.bytes) return { kind: 'not-yet', detail: `${bytes.length} bytes, manifest says ${expected.bytes}` };
+    if ((await sha256(bytes)) !== expected.hash) return { kind: 'not-yet', detail: 'hash mismatch' };
+  }
   const newline = bytes.indexOf(0x0a);
   if (newline < 0) return { kind: 'not-yet', detail: 'no header' };
   const header = parseJson(bytes.subarray(0, newline));
   if (!isRecord(header) || header['magic'] !== MAGIC) return { kind: 'not-yet', detail: 'bad header' };
-  const { formatVersion, codec: codecId } = header;
+  const { formatVersion, codec, key } = header;
   if (!isCount(formatVersion)) return { kind: 'not-yet', detail: 'bad header' };
   if (formatVersion > FORMAT_VERSION) return { kind: 'newer-format', formatVersion };
-  if (typeof codecId !== 'string') return { kind: 'not-yet', detail: 'bad header' };
-  if (codecId !== codec.id) return { kind: 'unknown-codec', codec: codecId };
-  const decoded = await codec.decode(bytes.subarray(newline + 1));
-  return decoded.ok ? { kind: 'ok', body: decoded.body } : { kind: 'not-yet', detail: decoded.detail };
+  if (typeof codec !== 'string') return { kind: 'not-yet', detail: 'bad header' };
+  if (codec !== CODEC) return { kind: 'unknown-codec', codec };
+  if (key !== cipher.keyId) return { kind: 'other-key' };
+  const plain = await cipher.open(bytes.subarray(newline + 1), associated(bytes.subarray(0, newline + 1), at));
+  if (plain === null) return { kind: 'not-yet', detail: 'does not verify' };
+  try {
+    return { kind: 'ok', body: JSON.parse(fromUtf8.decode(await pipe(plain, new DecompressionStream('gzip')))) };
+  } catch (error) {
+    return { kind: 'not-yet', detail: String(error) };
+  }
 }
 
 // ---------- Register body (StateFile) ----------
@@ -358,6 +390,28 @@ export function parseStateFile<R extends Rec>(body: unknown, type: RegisterType<
   const typeVersion = raw['typeVersion'];
   if (!isCount(typeVersion)) return { kind: 'invalid', detail: 'bad typeVersion' };
   return { kind: 'ok', file: { device: at.device, type: type.name, typeVersion, seq, writtenAt, acked: parsedAcked, replica: parsedReplica } };
+}
+
+// ---------- Snapshot body ----------
+
+export type SnapshotFile<S extends Json> = {
+  readonly device: DeviceId;
+  readonly type: string;
+  readonly typeVersion: number;
+  readonly content: S;
+};
+
+export function encodeSnapshotFile<S extends Json>(file: SnapshotFile<S>): Json {
+  return { device: file.device, type: file.type, typeVersion: file.typeVersion, content: file.content };
+}
+
+export function parseSnapshotFile<S extends Json>(body: unknown, type: SnapshotType<S>, at: { readonly device: DeviceId }): Parsed<SnapshotFile<S>> {
+  const header = parseHeader(body, type, at.device);
+  if (header.kind !== 'ok') return header;
+  const typeVersion = header.file['typeVersion'];
+  const content = type.parseContent(header.file['content']);
+  if (!isCount(typeVersion) || content === null) return { kind: 'invalid', detail: 'bad snapshot' };
+  return { kind: 'ok', file: { device: at.device, type: type.name, typeVersion, content } };
 }
 
 // ---------- Log body ----------

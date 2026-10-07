@@ -241,6 +241,7 @@ export const bookmarks: RegisterType<Bookmark> = {
   normalize,
 
   references: (b) => [b.location.parent],
+  emptyReadIsSuspect: true,
 
   label(b) {
     return b.title === '' && b.kind === 'url' ? b.url : b.title;

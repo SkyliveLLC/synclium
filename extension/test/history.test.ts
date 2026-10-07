@@ -4,19 +4,20 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { DAY_MS, dayOf, shiftDay } from '../src/model.ts';
 import { history } from '../src/history.ts';
-import { gzipJson, keys, parseManifest, shardRel } from '../src/store-format.ts';
-import { World, expireAfter, syncedPair } from './support/harness.ts';
+import { keys, shardRel } from '../src/store-format.ts';
+import { World, expireAfter, openBody, readManifest, syncedPair } from './support/harness.ts';
 import { ground } from './support/ground.ts';
 import { visitsOver } from './support/fake-history.ts';
 
 const REDERIVE = { rederiveHistory: 1, applyDeletions: 0 };
 
 async function shardUrls(world: World, device: string, day: string): Promise<readonly string[]> {
-  const file = world.cloud.files.get(`devices/${device}/history/${day}.hsync`);
+  const path = `devices/${device}/history/${day}.hsync`;
+  const file = world.cloud.files.get(path);
   if (file === undefined) return [];
-  const decoded = await gzipJson.decode(file.data.subarray(file.data.indexOf(0x0a) + 1));
-  if (!decoded.ok || typeof decoded.body !== 'object' || decoded.body === null || !('events' in decoded.body) || !Array.isArray(decoded.body.events)) throw new Error('bad shard');
-  return decoded.body.events.map((e: unknown) => (typeof e === 'object' && e !== null && 'url' in e && typeof e.url === 'string' ? e.url : ''));
+  const body = await openBody(file.data, path);
+  if (typeof body !== 'object' || body === null || !('events' in body) || !Array.isArray(body.events)) throw new Error('bad shard');
+  return body.events.map((e: unknown) => (typeof e === 'object' && e !== null && 'url' in e && typeof e.url === 'string' ? e.url : ''));
 }
 
 test('owner-only shards: each device publishes only its own visits, and peers index them under the author', async () => {
@@ -65,20 +66,18 @@ test('retention: day 91 is never published, and a day that ages out leaves the m
   await x.cycle(undefined, REDERIVE);
   const today = dayOf(world.clock.now);
   const oldestKept = shiftDay(today, -(history.retentionDays - 1));
-  const manifest = () => {
-    const file = world.cloud.files.get(keys.manifest(x.device));
-    if (file === undefined) throw new Error('no manifest');
-    const parsed = parseManifest(file.data, x.device);
-    if (parsed === null) throw new Error('bad manifest');
+  const manifest = async () => {
+    const parsed = await readManifest(world.cloud.files.get(keys.manifest(x.device))?.data, x.device);
+    if (parsed === null) throw new Error('no manifest');
     return parsed;
   };
-  assert.equal([...manifest().files.keys()].filter((rel) => rel.startsWith('history/')).length, history.retentionDays, 'exactly 90 days published');
-  assert.equal(manifest().files.has(shardRel(history, shiftDay(oldestKept, -1))), false, 'day 91 is not published');
+  assert.equal([...(await manifest()).files.keys()].filter((rel) => rel.startsWith('history/')).length, history.retentionDays, 'exactly 90 days published');
+  assert.equal((await manifest()).files.has(shardRel(history, shiftDay(oldestKept, -1))), false, 'day 91 is not published');
   await y.cycle();
   assert.equal(y.sink.visitsFrom(x.device).length, history.retentionDays);
   world.clock.tick(DAY_MS);
   await x.cycle();
-  assert.equal(manifest().files.has(shardRel(history, oldestKept)), false, 'the aged-out day left the manifest');
+  assert.equal((await manifest()).files.has(shardRel(history, oldestKept)), false, 'the aged-out day left the manifest');
   assert.equal(world.cloud.files.has(keys.file(x.device, shardRel(history, oldestKept))), false, 'and its file left the store');
   assert.equal(x.logLocal.days().has(oldestKept), false, 'and the owner forgot it locally');
   await y.cycle();
@@ -150,6 +149,6 @@ test('backfill walks newest day first and resumes across budget cuts to the same
     'with the same visits per day as the unbounded run',
   );
   x.push();
-  const parsed = parseManifest(world.cloud.files.get(keys.manifest(x.device))?.data ?? new Uint8Array(), x.device);
+  const parsed = await readManifest(world.cloud.files.get(keys.manifest(x.device))?.data, x.device);
   assert.equal([...(parsed?.files.keys() ?? [])].filter((rel) => rel.startsWith('history/')).length, days, 'all days published');
 });

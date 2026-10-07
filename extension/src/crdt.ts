@@ -256,11 +256,12 @@ export function massDelete<R extends Rec>(
   applied: Live<R> | null,
   observed: Live<R>,
   limits: { readonly minItems: number; readonly fraction: number },
+  emptyReadIsSuspect: boolean,
 ): { readonly removed: number; readonly of: number } | null {
   if (applied === null || applied.size === 0) return null;
   let removed = 0;
   for (const id of applied.keys()) if (!observed.has(id)) removed++;
   const of = applied.size;
-  if (observed.size === 0 || (of >= limits.minItems && removed / of > limits.fraction)) return { removed, of };
+  if ((emptyReadIsSuspect && observed.size === 0) || (of >= limits.minItems && removed / of > limits.fraction)) return { removed, of };
   return null;
 }
