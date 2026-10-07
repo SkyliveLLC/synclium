@@ -8,8 +8,8 @@ import type { Manifest, RelName, StateFile, StoreKey } from './store-format.ts';
 // ---------- Store ----------
 
 /**
- * A dumb blob store. A folder through File System Access in v1 (folder-store.ts); WebDAV is the fallback
- * adapter (webdav-store.ts). The whole contract:
+ * A dumb blob store: a folder through File System Access (folder-store.ts) or a WebDAV server
+ * (webdav-store.ts), whichever setup chose (stores.ts). The whole contract:
  *  - One writer per key. The layout guarantees it, so no CAS, locking, or list consistency is needed.
  *  - `put` need not be atomic. Readers verify bytes against the writer's manifest, so a torn file is "not yet".
  *  - Every method rejects only with StoreError.
@@ -17,7 +17,7 @@ import type { Manifest, RelName, StateFile, StoreKey } from './store-format.ts';
 export interface Store {
   /** Names directly under `prefix`, files and folders alike. The engine parses them; foreign names are reported. */
   list(prefix: string): Promise<readonly string[]>;
-  /** `known` is the version this device last read. A folder compares lastModified + size, WebDAV an ETag. */
+  /** `known` is the version this device last read. A folder compares lastModified + size, WebDAV an ETag or a hash. */
   get(key: StoreKey, known: string | null): Promise<Fetched>;
   put(key: StoreKey, bytes: Uint8Array): Promise<void>;
   /** Missing is success. Removes parent folders the delete leaves empty. */
@@ -38,11 +38,11 @@ export type ProbeResult = { readonly kind: 'ok' } | { readonly kind: 'failed'; r
 export type StoreFailure =
   /** The folder grant lapsed (P7 rungs B, C), or a WebDAV origin's host permission was revoked. */
   | { readonly kind: 'needs-permission' }
-  /** The folder was moved, renamed, or deleted. The user picks it again. */
+  /** The folder or the WebDAV collection was moved, renamed, or deleted. The user chooses it again in setup. */
   | { readonly kind: 'missing' }
-  /** WebDAV only: offline or the server is down. A folder on local disk is never unreachable. */
+  /** WebDAV only: offline, or the server answered 5xx. A folder on local disk is never unreachable. */
   | { readonly kind: 'unreachable'; readonly detail: string }
-  /** The store refused a write or the credentials. */
+  /** The store refused a write or the credentials (a folder's DOMException, a WebDAV 401, 403, or 507). */
   | { readonly kind: 'rejected'; readonly detail: string };
 
 export class StoreError extends Error {
@@ -66,6 +66,8 @@ export type StoreConnection =
 type WithoutStore<T> = T extends unknown ? Omit<T, 'store'> : never;
 /** What the UI shows. Derived, so a new access state reaches the popup's switch without edits. */
 export type StoreStatus = WithoutStore<StoreConnection>;
+
+export const statusOf = (conn: StoreConnection): StoreStatus => (conn.access === 'ready' ? { access: 'ready', label: conn.label } : conn);
 
 // ---------- Profile side: register types ----------
 

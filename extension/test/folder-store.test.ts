@@ -1,9 +1,9 @@
 // folder-store.ts against an in-memory File System Access volume (support/fake-fsa.ts).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { STORE_NAME, allowRoot, connectRoot, folderStore, storeRootIn } from '../src/folder-store.ts';
+import { allowRoot, connectRoot, folderStore, storeRootIn } from '../src/folder-store.ts';
 import { StoreError, type Store, type StoreFailure } from '../src/ports.ts';
-import { keys, shardRel } from '../src/store-format.ts';
+import { STORE_NAME, keys, shardRel } from '../src/store-format.ts';
 import { history } from '../src/history.ts';
 import { dayOf } from '../src/model.ts';
 import { deviceId } from './support/memory-local.ts';

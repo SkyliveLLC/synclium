@@ -8,5 +8,6 @@
   "action": { "default_popup": "popup.html", "default_title": "Synclium" },
   "options_ui": { "page": "app.html", "open_in_tab": true },
   "omnibox": { "keyword": "hs" },
-  "permissions": ["bookmarks", "history", "storage", "unlimitedStorage", "alarms"]
+  "permissions": ["bookmarks", "history", "storage", "unlimitedStorage", "alarms"],
+  "optional_host_permissions": ["https://*/*", "http://localhost/*", "http://127.0.0.1/*"]
 }
