@@ -19,6 +19,9 @@ const manifest = JSON.parse(readFileSync(join(root, 'static/manifest.json'), 'ut
 if (dev) {
   manifest.name = `${manifest.name} (dev store)`;
   manifest.background.service_worker = 'worker-dev.js';
+  // Scripted e2e runs cannot click a permission prompt, so the dev build holds its optional permissions up front.
+  manifest.permissions = [...manifest.permissions, ...(manifest.optional_permissions ?? [])];
+  delete manifest.optional_permissions;
 } else {
   const leaked = DEV_ONLY.filter((name) => existsSync(join(out, name)));
   if (leaked.length > 0) {

@@ -18,6 +18,10 @@
         <svg viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6"/><path d="M8 4.5V8l2.5 1.5"/></svg>
         History
       </a>
+      <a href="#extensions">
+        <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 5.5h3.5V4a1.5 1.5 0 0 1 3 0v1.5H13v3h-1.5a1.5 1.5 0 0 0 0 3H13V14H3z"/></svg>
+        Extensions
+      </a>
       <a href="#advanced">
         <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 4.5h6M11.5 4.5h2M2.5 11.5h2M7.5 11.5h6"/><circle cx="10" cy="4.5" r="1.5"/><circle cx="6" cy="11.5" r="1.5"/></svg>
         Settings
@@ -45,11 +49,22 @@
           </details>
           <p id="store-label" class="note" hidden></p>
         </li>
+        <li id="key-step" hidden>
+          <h3>Sync key</h3>
+          <div id="key-new" hidden>
+            <p class="note">Everything in the store is encrypted with this key. Save it in your password manager: your other devices need it to join.</p>
+            <div class="key-row"><code id="key-shown" class="key"></code><button id="key-copy">Copy</button></div>
+          </div>
+          <div id="key-enter" hidden>
+            <input id="key-input" type="text" autocomplete="off" spellcheck="false" placeholder="HSK-…" aria-label="Sync key">
+          </div>
+          <p id="key-note" class="note"></p>
+        </li>
         <li>
           <h3>Name this device</h3>
           <input id="name" type="text" maxlength="64" autocomplete="off" aria-label="Device name">
           <label class="check"><input id="history-on" type="checkbox" class="switch" checked> Sync history</label>
-          <p class="note">Bookmarks and the last 90 days of history are stored unencrypted in this folder.</p>
+          <p class="note">Bookmarks and the last 90 days of history are stored in the folder or server, encrypted with the sync key.</p>
           <p id="preview" class="preview" hidden></p>
           <button id="start" class="primary" disabled>Start</button>
         </li>
@@ -106,6 +121,7 @@
         <h3>Problems</h3>
         <ul id="warnings" class="rows"></ul>
       </div>
+      <p id="status-profile" class="note" hidden></p>
     </section>
 
     <section id="review" hidden>
@@ -115,6 +131,17 @@
       <button id="apply-deletions" class="danger">Apply these deletions</button>
     </section>
 
+    <section id="extensions" hidden>
+      <div id="ext-off">
+        <p>Share this device's list of extensions with your other devices, and see what they have that this one doesn't. Nothing is installed for you: each one opens its Chrome Web Store page.</p>
+        <button id="ext-grant" class="primary">Share extensions</button>
+        <p class="note">Helium asks to let Synclium see your extensions. Turn it on on each device whose list you want to share.</p>
+      </div>
+      <div id="ext-on" hidden>
+        <ul id="ext-offers" class="rows"></ul>
+        <p class="note"><button id="ext-revoke" class="quiet">Stop sharing this device's extensions</button></p>
+      </div>
+    </section>
     <section id="history" hidden>
       <input id="q" type="search" placeholder="Search history from your other devices" autocomplete="off" aria-label="Search history">
       <p class="note">Tip: type <kbd>hs</kbd> and a space in the address bar to search from anywhere.</p>
@@ -125,9 +152,17 @@
       <div class="setting">
         <div>
           <h3>Sync history</h3>
-          <p class="note">Bookmarks and the last 90 days of history are stored unencrypted in the sync folder.</p>
+          <p class="note">Bookmarks and the last 90 days of history are stored in the sync folder, encrypted with the sync key.</p>
         </div>
         <input id="adv-history" type="checkbox" class="switch" aria-label="Sync history">
+      </div>
+      <div class="setting">
+        <div>
+          <h3>Sync key</h3>
+          <p class="note">Another device needs this key to join. Anyone with it and the folder can read your bookmarks and history.</p>
+          <div class="key-row"><code id="adv-key" class="key" hidden></code><button id="adv-key-copy" hidden>Copy</button></div>
+        </div>
+        <button id="show-key">Show sync key</button>
       </div>
       <div class="setting">
         <div>
@@ -136,6 +171,30 @@
           <p class="note">Choosing another folder or WebDAV server joins it as a new device. Bookmarks that already match are not duplicated.</p>
         </div>
         <button id="change-folder">Change</button>
+      </div>
+      <div class="setting">
+        <div>
+          <h3>Full profile mode</h3>
+          <p class="note">Also syncs settings, custom search engines, and addresses. A small companion app writes them into Helium's profile files after Helium quits, keeping a backup first. Protected settings, the default search engine, and cards are not synced.</p>
+          <p class="note">Helium's own guidance is not to modify these files. Turn this on only if you accept that.</p>
+          <p id="pm-line" class="note" hidden></p>
+          <p id="pm-error" class="note" hidden></p>
+          <div id="pm-allow" hidden>
+            <button id="pm-grant">Allow the companion</button>
+            <p class="note">Helium asks to let Synclium talk to programs on this computer.</p>
+          </div>
+          <div id="pm-install" hidden>
+            <p class="note">Install the companion, then check again:</p>
+            <div class="key-row"><code id="pm-command" class="key"></code><button id="pm-copy">Copy</button></div>
+            <p class="note">The binary is companion/dist/helium-sync-companion from the repo build.</p>
+            <button id="pm-check">Check again</button>
+          </div>
+          <div id="pm-pick" hidden>
+            <label id="pm-profile-row" class="check" hidden>Profile <select id="pm-profile" aria-label="Helium profile"></select></label>
+            <button id="pm-on" class="primary">Turn on</button>
+          </div>
+        </div>
+        <button id="pm-off" hidden>Turn off</button>
       </div>
       <div class="setting">
         <div>

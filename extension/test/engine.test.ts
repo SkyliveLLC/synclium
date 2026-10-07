@@ -3,8 +3,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { DAY_MS, isDeviceId } from '../src/model.ts';
-import { encodeManifest, keys, parseManifest } from '../src/store-format.ts';
-import { World, Crasher, syncedPair, type Device } from './support/harness.ts';
+import { keys, sealManifest } from '../src/store-format.ts';
+import { cipherFor, mintSyncKey } from '../src/sync-key.ts';
+import { FakeBrowser } from './support/fake-bookmarks.ts';
+import { World, Crasher, TEST_KEY, readManifest, syncedPair, type Device } from './support/harness.ts';
 import type { SyncReport } from '../src/engine.ts';
 import { ground, idOf, urlTitle, OTHER } from './support/ground.ts';
 import { visitsOver } from './support/fake-history.ts';
@@ -135,7 +137,7 @@ test('rollback: a peer manifest with a lower seq than seen is ignored and the in
   assert.deepEqual(republished.warnings, [], 'X notices its own manifest went backwards and republishes');
   const manifest = world.cloud.files.get(keys.manifest(x.device));
   assert.ok(manifest !== undefined);
-  assert.equal(parseManifest(manifest.data, x.device)?.files.size, 3, 'bookmarks plus both days are back in the store');
+  assert.equal((await readManifest(manifest.data, x.device))?.files.size, 4, 'bookmarks, the reading list, and both days are back in the store');
   const after = await cycleReport(y);
   assert.deepEqual(after.warnings, []);
 });
@@ -145,9 +147,10 @@ test('identity clash: a manifest under our DeviceId with a higher seq stops the 
   const { x } = await syncedPair(world);
   const ownFile = world.cloud.files.get(keys.manifest(x.device));
   assert.ok(ownFile !== undefined);
-  const parsed = parseManifest(ownFile.data, x.device);
+  const parsed = await readManifest(ownFile.data, x.device);
   assert.ok(parsed !== null);
-  x.attached.local.set(keys.manifest(x.device), { data: encodeManifest({ ...parsed, seq: parsed.seq + 10 }), rev: 99, ver: 99, dirty: false });
+  const data = await sealManifest({ ...parsed, seq: parsed.seq + 10 }, await cipherFor(TEST_KEY));
+  x.attached.local.set(keys.manifest(x.device), { data, rev: 99, ver: 99, dirty: false });
   x.browser.rename(idOf(x.browser, urlTitle(1)), 'should-not-stamp');
   const report = await x.sync();
   assert.deepEqual(report, { kind: 'identity-clash', at: world.clock.now, device: x.device });
@@ -198,6 +201,31 @@ test('preview reports the join without writing sync state or the store', async (
   assert.deepEqual([...world.cloud.files.keys()], filesBefore, 'preview wrote nothing to the store');
   z.access = { kind: 'missing' };
   assert.deepEqual(await z.preview(), { kind: 'not-ready', store: { access: 'failed', label: 'memory', why: { kind: 'missing' } } });
+});
+
+test('preview under another key asks for the folder\'s key and reads nothing it cannot open', async () => {
+  const world = new World('icloud');
+  const x = world.add('X', { browser: ground() });
+  await x.setup();
+  await x.cycle();
+  const z = world.add('Z', { browser: ground(), key: mintSyncKey() });
+  z.pull();
+  assert.deepEqual(await z.preview(), { kind: 'needs-key', label: 'memory', devices: 1 });
+});
+
+test('a device under another key in the same folder is not a peer: nothing crosses, both say so', async () => {
+  const world = new World('icloud');
+  const x = world.add('X', { browser: ground() });
+  const z = world.add('Z', { browser: new FakeBrowser(), key: mintSyncKey() });
+  await x.setup();
+  await z.setup();
+  await x.cycle();
+  const report = await cycleReport(z);
+  assert.deepEqual(report.peers, [], 'X is not Z\'s peer');
+  assert.deepEqual(report.warnings, [{ kind: 'other-key', peer: x.device }]);
+  assert.equal(z.browser.render(), new FakeBrowser().render(), 'none of X\'s bookmarks reached Z');
+  const back = await cycleReport(x);
+  assert.deepEqual(back.warnings, [{ kind: 'other-key', peer: z.device }]);
 });
 
 test('a device that was never set up reports needs-setup', async () => {

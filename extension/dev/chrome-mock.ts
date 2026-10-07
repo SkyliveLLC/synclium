@@ -5,6 +5,7 @@
 import type { SyncReport } from '../src/engine.ts';
 import type { RemoteVisit } from '../src/local.ts';
 import type { DeviceId } from '../src/model.ts';
+import type { SyncKey } from '../src/sync-key.ts';
 import type { Shown, UiMessage, UiReply, Wire } from '../src/ui.ts';
 
 const VERSION = 'dev';
@@ -26,16 +27,21 @@ const healthy: Cycle = {
   complete: true,
   store: { access: 'ready', label: 'Helium Sync' },
   bookmarks: { kind: 'synced', stamped: 2, applied: { added: 3, updated: 1, removed: 0, sample: [] } },
+  readingList: { kind: 'synced', stamped: 0, applied: { added: 1, updated: 0, removed: 0, sample: [] } },
+  settings: { kind: 'off' },
+  searchEngines: { kind: 'off' },
+  addresses: { kind: 'off' },
   history: { kind: 'synced', collected: 41, publishedDays: 62, unpublishedDays: 0, pulledDays: 4, deriveDaysLeft: 0 },
   peers: [
     { device: fakeId(2), name: 'Studio iMac', lastSeen: now - 5 * MIN, idle: false },
     { device: fakeId(3), name: 'Work laptop', lastSeen: now - 180 * MIN, idle: false },
     { device: fakeId(4), name: 'Old ThinkPad', lastSeen: now - 40 * DAY, idle: true },
   ],
+  extensions: [],
   warnings: [],
 };
 
-const shown = (report: SyncReport | null, failure: Shown['failure'] = null): Shown => ({ report, failure });
+const shown = (report: SyncReport | null, failure: Shown['failure'] = null): Shown => ({ report, failure, profile: { kind: 'off' } });
 
 /** Every state worth previewing. The key is the `?scenario=` value; the first is the default. */
 const SCENARIOS = {
@@ -97,7 +103,7 @@ function handle(message: UiMessage): UiReply<UiMessage> {
   switch (message.kind) {
     case 'sync-now':
       // Long enough to see the device map pulse.
-      setTimeout(() => publish({ report: cycle === null ? state.report : { ...cycle, at: Date.now() }, failure: null }), 1200);
+      setTimeout(() => publish({ ...state, report: cycle === null ? state.report : { ...cycle, at: Date.now() }, failure: null }), 1200);
       return null;
     case 'preview':
       return { kind: 'joining', label: 'Helium Sync', peers: ['Studio iMac', 'Work laptop'], bookmarks: { matched: 498, toAdd: 14, toPublish: 37 }, historyDays: 62 };
@@ -116,6 +122,12 @@ function handle(message: UiMessage): UiReply<UiMessage> {
       const q = message.query.trim().toLowerCase();
       return VISITS.filter((v) => q === '' || v.title.toLowerCase().includes(q) || v.url.includes(q));
     }
+    case 'show-key':
+      return cycle === null ? null : ('0123456789ABCDEFGHJKMNPQRSTVWXYZ0123456789ABCDEFGHJK' as SyncKey);
+    case 'profile-status':
+      return { permission: false, hello: null, error: null, on: null };
+    case 'set-profile-mode':
+      return null;
     case 'forget-this-device':
       publish(shown({ kind: 'needs-setup', at: Date.now() }));
       return null;
@@ -153,6 +165,12 @@ const fakeChrome = {
       set: async () => {},
       onChanged: { addListener: (listener: (typeof listeners)[number]) => void listeners.push(listener) },
     },
+  },
+  // Nothing optional is granted in the preview: Extensions and full profile mode show their opt-in step.
+  permissions: {
+    contains: async () => false,
+    request: async () => false,
+    remove: async () => true,
   },
   tabs: {
     create: ({ url }: { readonly url: string }) => void window.open(url, '_blank'),

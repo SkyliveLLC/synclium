@@ -8,12 +8,16 @@
 import { createEngine, type Engine } from './engine.ts';
 import { chromeBookmarks } from './chrome-bookmarks.ts';
 import { chromeHistorySource } from './chrome-history.ts';
+import { readingListChannel } from './chrome-reading-list.ts';
+import { chromeExtensionsSource } from './chrome-extensions.ts';
+import { connectCompanion, profileChannels } from './chrome-profile.ts';
+import { PROTOCOL_VERSION } from './profile-mode.ts';
 import { isSyncableUrl } from './history.ts';
 import { historyIndex, historyLocal, indexedLocal, intents, type StoreSlot } from './local.ts';
-import { gzipJson, parsePlatform, type Platform } from './store-format.ts';
+import { parsePlatform, type Platform } from './store-format.ts';
 import { ALARM_MIN_MS, POLL_MINUTES, createScheduler, withCycleLock, type Locks, type Timers, type Trigger, type Wake } from './scheduler.ts';
-import { statusOf, type StoreConnection } from './ports.ts';
-import { DEVICE_NAMES, badgeFor, readShown, storedShown, viewOf, type Shown, type StartResult, type UiMessage, type UiReply, type Wire } from './ui.ts';
+import { statusOf, type ProfileChannels, type StoreConnection } from './ports.ts';
+import { DEVICE_NAMES, badgeFor, readShown, storedShown, viewOf, type ProfileStatus, type Shown, type StartResult, type UiMessage, type UiReply, type Wire } from './ui.ts';
 
 /** Where sync stores its files. stores.ts's `releaseBackend` in release. */
 export type StoreBackend = {
@@ -22,6 +26,12 @@ export type StoreBackend = {
   /** Worker, under the cycle lock, on Start: `candidate` becomes `current`. */
   promote(): Promise<void>;
 };
+
+/** Full profile mode's optional permission, granted from Advanced. */
+const NATIVE: chrome.permissions.Permissions = { permissions: ['nativeMessaging'] };
+
+/** One cycle's companion: channels for the engine, the status to show after the cycle, and the port to close. */
+type ProfileLink = { readonly channels: ProfileChannels | null; readonly status: () => ProfileStatus; readonly close: () => void };
 
 const POLL = 'poll';
 const RESUME = 'resume';
@@ -37,6 +47,8 @@ export function startWorker(backend: StoreBackend): void {
   const index = historyIndex();
   const historyLog = historyLocal();
   const bookmarks = chromeBookmarks();
+  const readingList = readingListChannel(chrome.readingList);
+  const extensionsSource = chromeExtensionsSource();
   const historySource = chromeHistorySource();
   const platform = async (): Promise<Platform> => parsePlatform((await chrome.runtime.getPlatformInfo()).os);
 
@@ -64,17 +76,50 @@ export function startWorker(backend: StoreBackend): void {
     },
   };
 
-  async function engineFor(slot: StoreSlot): Promise<Engine> {
+  /** Only a cycle passes `profile`; preview, Start, and Forget never touch the profile files. */
+  async function engineFor(slot: StoreSlot, profile: ProfileChannels | null = null): Promise<Engine> {
     return createEngine({
       connect: () => backend.connect(slot),
       local,
       bookmarks,
+      readingList,
+      profile,
       history: { source: historySource, sink: index, local: historyLog },
-      codec: gzipJson,
+      extensions: extensionsSource,
       clock: Date,
       platform: await platform(),
       appVersion: chrome.runtime.getManifest().version,
     });
+  }
+
+  /**
+   * Full profile mode for one cycle: on only with a picked profile, the grant, and a companion that answers
+   * `hello` with our protocol. Anything less is a status, never a failed cycle: the three types sit it out.
+   */
+  async function linkProfile(): Promise<ProfileLink> {
+    const unavailable = (why: Extract<ProfileStatus, { kind: 'unavailable' }>['why']): ProfileLink => ({ channels: null, status: () => ({ kind: 'unavailable', why }), close: () => {} });
+    const picked = (await local.load())?.profile ?? null;
+    if (picked === null) return { channels: null, status: () => ({ kind: 'off' }), close: () => {} };
+    if (!(await chrome.permissions.contains(NATIVE))) return unavailable('no-permission');
+    let link: ReturnType<typeof connectCompanion>;
+    try {
+      link = connectCompanion();
+    } catch {
+      return unavailable('no-permission');
+    }
+    try {
+      const hello = await link.hello({});
+      if (hello.protocol !== PROTOCOL_VERSION) {
+        link.close();
+        return unavailable('protocol-mismatch');
+      }
+    } catch {
+      link.close();
+      return unavailable('no-companion');
+    }
+    const { channels, seen } = profileChannels(link, picked.dir);
+    // Before the first read of a cycle (one that stopped early) nothing is known yet: nothing waits, rows read.
+    return { channels, status: () => ({ kind: 'on', profile: picked.dir, pending: 0, webData: 'ok', ...seen() }), close: link.close };
   }
 
   /** Pages render from storage, so they work while the worker sleeps. The badge carries no time, so it never goes stale. */
@@ -94,14 +139,17 @@ export function startWorker(backend: StoreBackend): void {
     ping: () => void chrome.runtime.getPlatformInfo(),
     now: Date.now,
     runCycle: async (budget, asks) => {
+      const profile = await linkProfile();
       try {
-        const report = await (await engineFor('current')).sync({ budget, asks });
-        await show({ report, failure: null });
+        const report = await (await engineFor('current', profile.channels)).sync({ budget, asks });
+        await show({ report, failure: null, profile: profile.status() });
         return report.kind === 'cycle' && !report.complete ? { kind: 'partial' } : { kind: 'complete' };
       } catch (error) {
         const message = messageOf(error);
         await show({ failure: { at: Date.now(), message } });
         return { kind: 'failed', message };
+      } finally {
+        profile.close();
       }
     },
   });
@@ -120,6 +168,20 @@ export function startWorker(backend: StoreBackend): void {
   chrome.bookmarks.onRemoved.addListener(on('bookmarks'));
   chrome.bookmarks.onChildrenReordered.addListener(on('bookmarks'));
   chrome.bookmarks.onImportEnded.addListener(on('bookmarks'));
+  chrome.readingList.onEntryAdded.addListener(on('reading-list'));
+  chrome.readingList.onEntryUpdated.addListener(on('reading-list'));
+  chrome.readingList.onEntryRemoved.addListener(on('reading-list'));
+  // `management` is optional. Before the grant the namespace exists with getSelf and no events (P8 follow-up),
+  // so the events are the test. A grant asks for a sync; the next worker start registers these.
+  const management = chrome.management;
+  if (management.onInstalled !== undefined) {
+    management.onInstalled.addListener(on('extensions'));
+    management.onUninstalled.addListener(on('extensions'));
+    management.onEnabled.addListener(on('extensions'));
+    management.onDisabled.addListener(on('extensions'));
+  }
+  chrome.permissions.onAdded.addListener(on('manual'));
+  chrome.permissions.onRemoved.addListener(on('manual'));
   // New visits need no trigger: the poll scans them. A removal cannot say which visits went (a range delete
   // lists no urls), so it asks for a re-derive of every own day, as a durable intent the engine acknowledges.
   chrome.history.onVisitRemoved.addListener(on('history-removed'));
@@ -152,7 +214,7 @@ export function startWorker(backend: StoreBackend): void {
         scheduler.request('manual');
         return null;
       case 'preview':
-        return withCycleLock(locks, async () => (await engineFor('candidate')).sync({ preview: true }));
+        return withCycleLock(locks, async () => (await engineFor('candidate')).sync({ preview: true, key: message.key }));
       case 'start': {
         const name = message.name.trim().slice(0, NAME_MAX) || DEVICE_NAMES[await platform()];
         const result = await withCycleLock(locks, async (): Promise<StartResult> => {
@@ -160,12 +222,15 @@ export function startWorker(backend: StoreBackend): void {
           if (conn.access !== 'ready') return { kind: 'not-ready', store: conn };
           const probe = await conn.store.probe();
           if (probe.kind === 'failed') return { kind: 'not-ready', store: { access: 'failed', label: conn.label, why: probe.why } };
+          // The page only offers Start after a matching preview, but the folder may have changed since.
+          const preview = await (await engineFor('candidate')).sync({ preview: true, key: message.key });
+          if (preview.kind === 'needs-key') return { kind: 'wrong-key' };
           await backend.promote();
           // A device that was already set up (Change, or a moved folder picked again) first removes its old
           // identity's files from the store it joins, so it never syncs with itself as a peer, and drops
           // the old store's sync state. Files it never wrote there are already absent, which is fine.
           await (await engineFor('current')).forget();
-          await local.reset({ name, historyOn: message.historyOn });
+          await local.reset({ name, historyOn: message.historyOn, key: message.key });
           return { kind: 'started' };
         });
         if (result.kind === 'started') scheduler.request('setup');
@@ -187,12 +252,38 @@ export function startWorker(backend: StoreBackend): void {
         const probe = await conn.store.probe();
         return probe.kind === 'ok' ? statusOf(conn) : { access: 'failed', label: conn.label, why: probe.why };
       }
+      case 'show-key':
+        return (await local.load())?.key ?? null;
       case 'search-history':
         return index.search(message.query, 200);
       case 'forget-this-device':
         await withCycleLock(locks, async () => (await engineFor('current')).forget());
-        await show({ report: { kind: 'needs-setup', at: Date.now() }, failure: null });
+        await show({ report: { kind: 'needs-setup', at: Date.now() }, failure: null, profile: { kind: 'off' } });
         return null;
+      case 'profile-status': {
+        const permission = await chrome.permissions.contains(NATIVE);
+        const on = (await local.load())?.profile ?? null;
+        if (!permission) return { permission, hello: null, error: null, on };
+        try {
+          const link = connectCompanion();
+          try {
+            return { permission, hello: await link.hello({}), error: null, on };
+          } finally {
+            link.close();
+          }
+        } catch (error) {
+          return { permission, hello: null, error: messageOf(error), on };
+        }
+      }
+      case 'set-profile-mode': {
+        const { dir } = message;
+        await withCycleLock(locks, async () => {
+          const me = await local.load();
+          if (me !== null) await local.save({ ...me, profile: dir === null ? null : { dir } });
+        });
+        scheduler.request('manual');
+        return null;
+      }
       default: {
         const unreachable: never = message;
         return unreachable;

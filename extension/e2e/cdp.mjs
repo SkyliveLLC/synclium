@@ -4,9 +4,15 @@ import { writeFileSync } from 'node:fs';
 
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+/**
+ * The scratch copy, never /Applications/Helium.app: the everyday browser may be running from that bundle, and a
+ * second instance of it shares its app identity and keychain item.
+ */
+export const SCRATCH_HELIUM = '/tmp/helium-sync-scratch/HeliumScratch.app/Contents/MacOS/Helium';
+
 export function launch({ profile, port, ext, log }) {
-  const child = spawn('/Applications/Helium.app/Contents/MacOS/Helium', [
-    `--user-data-dir=${profile}`, '--no-first-run', '--no-default-browser-check',
+  const child = spawn(SCRATCH_HELIUM, [
+    `--user-data-dir=${profile}`, '--use-mock-keychain', '--no-first-run', '--no-default-browser-check',
     `--remote-debugging-port=${port}`, `--load-extension=${ext}`,
   ], { stdio: ['ignore', 'ignore', 'ignore'], detached: true });
   child.unref();

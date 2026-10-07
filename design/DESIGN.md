@@ -4,7 +4,7 @@ Synthesized design, arena round 2. Sketch in `sketch/`. `npx -y -p typescript ts
 
 ## Problem
 
-helium-sync is a Chrome Web Store extension that syncs bookmarks and history between one person's Helium browsers, with no server of ours. Conan's round-2 decisions bind it. The extension is the product. Writing Helium's profile files directly is opt-in only. v1 has no encryption. History is the second data type.
+helium-sync is a Chrome Web Store extension that syncs bookmarks and history between one person's Helium browsers, with no server of ours. Conan's round-2 decisions bind it. The extension is the product. Writing Helium's profile files directly is opt-in only. Everything in the folder is encrypted with a sync key the devices share (round 3, see "Every file is sealed with one sync key"). History is the second data type.
 
 Four constraints make the shape non-obvious.
 
@@ -22,10 +22,11 @@ Round 1's register layer, per-device files, fold rule, adoption, and Store contr
 **Device 1, about 40 seconds.** The user clicks "Add to Helium" on the Chrome Web Store. The install opens `app.html#setup` in a tab.
 
 1. "Choose a folder you already sync: iCloud Drive, Dropbox, Syncthing." The user clicks [Choose folder], picks *iCloud Drive*, and clicks Allow in Chromium's "Let Helium Sync edit files?" prompt.
-2. Setup shows "New sync folder", a device name prefilled with "Mac", and a checked "Sync history" box with one sentence beside it. "Bookmarks and the last 90 days of history are stored unencrypted in this folder." The user clicks [Start].
-3. Setup reports "Published 512 bookmarks. Catching up on history, newest days first."
+2. Setup shows "New sync folder" and the sync key it just minted, `HSK-7F3Q-…` with [Copy], and asks the user to save it in a password manager.
+3. The device name is prefilled with "Mac", beside a checked "Sync history" box: "Bookmarks and the last 90 days of history are stored in this folder, encrypted with the sync key." The user clicks [Start].
+4. Setup reports "Published 512 bookmarks. Catching up on history, newest days first."
 
-**Device 2, the same clicks.** Step 2 now previews the join before anything is written. "Joining conan-mbp. 498 bookmarks already match, 14 will be added here, 37 will be shared." Adoption by content prevents duplicates. Picking the parent folder or `Helium Sync/` itself both work.
+**Device 2, the same clicks, plus the key.** The folder already holds a device, so the key step asks for its key: "1 device already syncs here. Enter the sync key from one of them." The user pastes it from their password manager, or copies it on device 1 under Advanced, [Show sync key]. Setup then previews the join before anything is written. "Joining conan-mbp. 498 bookmarks already match, 14 will be added here, 37 will be shared." Adoption by content prevents duplicates. Picking the parent folder or `Helium Sync/` itself both work.
 
 **Steady state needs no action.** A bookmark edit publishes about 5 seconds after the last change. Peers' changes arrive within 5 minutes. The badge stays blank. The popup says "Synced 2 min ago with 1 other device" and offers [Sync now] and [Open].
 
@@ -86,13 +87,22 @@ engine.ts            sync + forget, SyncReport, JoinPreview, fetch and publish p
   model.ts crdt.ts   round 1 register layer, plus RegisterType | LogType
   bookmarks.ts       round 1 Bookmark type
   history.ts         Visit as a LogType
-  store-format.ts    layout, manifest, envelope, codec, StateFile, LogShard
+  store-format.ts    layout, sealed manifest, envelope, Cipher, StateFile, LogShard
+  sync-key.ts        SyncKey: mint, parse, format; cipherFor (HKDF, AES-256-GCM)
+  snapshot-cycle.ts  syncSnapshot: publish own snapshot, keep peers' last good (extensions)
+  peer-file.ts       fetch and open one peer file against its manifest entry
+  reading-list.ts    ReadingItem as a RegisterType, ids from urls
+  extensions.ts      ExtensionList as a SnapshotType, offers()
+  profile-mode.ts    full profile mode's contract: Setting, SearchEngine, Address types, allowlist, host protocol
   ports.ts           Store, StoreConnection, StoreFailure, channels, LocalState, LogLocal, Asks, Budget
 stores.ts            the saved StoreChoice -> connect, allow; the release StoreBackend
 folder-store.ts      File System Access: choose, connect, allow, folderStore
 webdav-store.ts      WebDAV over fetch: choose, connect, allow, webdavStore
 chrome-bookmarks.ts  RegisterChannel<Bookmark>, chrome id map, planApply
 chrome-history.ts    LogSource<Visit> over chrome.history, read-only
+chrome-reading-list.ts  RegisterChannel<ReadingItem> over chrome.readingList
+chrome-extensions.ts    SnapshotSource<ExtensionList> over chrome.management (optional permission)
+chrome-profile.ts    the companion link over native messaging, and ProfileChannels: one read, staged applies
 local.ts             IndexedDB schema, LocalState, LogLocal, history index, intents, store slots
 ui.ts                Protocol, ask, StatusView, actionFor, badgeFor
 companion/           opt-in file mode: link.ts (extension side), protocol.ts, host.ts
@@ -101,18 +111,30 @@ companion/           opt-in file mode: link.ts (extension side), protocol.ts, ho
 ### The store is a folder, and the manifest is its commit point
 
 ```
-Helium Sync/devices/<deviceId>/manifest.json                 presence, seq, and {rel: {hash, bytes}} for every file
-Helium Sync/devices/<deviceId>/bookmarks.hsync               round 1 StateFile: envelope header + gzip(JSON)
+Helium Sync/devices/<deviceId>/manifest.json                 presence, seq, and {rel: {hash, bytes}} for every file, sealed
+Helium Sync/devices/<deviceId>/bookmarks.hsync               round 1 StateFile: envelope header + sealed gzip(JSON)
 Helium Sync/devices/<deviceId>/history/<yyyy-mm-dd>.hsync    this device's own visits for one UTC day
 ```
 
 Every key has one writer, so a dumb sync folder never sees a write-write conflict (per separate-before-serializing-shared-state).
 
-A device writes its files first and its manifest last. A reader verifies every file against the hash in the writer's manifest before parsing. A torn write, an iCloud placeholder, or a half-synced Dropbox file therefore reads as "not yet", and the last good copy stands. Files are `.hsync` because the bytes are a plaintext header plus a gzip body, which no gzip tool opens. Candidate 1 also suspected that Chromium's download protection fires on archive extensions when a File System Access writer closes. That reason is unverified.
+A device writes its files first and its manifest last. A reader verifies every file against the hash in the writer's manifest before parsing. A torn write, an iCloud placeholder, or a half-synced Dropbox file therefore reads as "not yet", and the last good copy stands. Files are `.hsync` because the bytes are a plaintext header plus an encrypted body. Candidate 1 also suspected that Chromium's download protection fires on archive extensions when a File System Access writer closes. That reason is unverified.
 
 `Store` has five methods. `get(key, known)` returns `ok`, `unchanged`, or `missing`, so an unchanged peer costs one metadata check and no read. `list` returns one directory's names and only discovers peers, because the manifest replaces recursive listing. `probe` writes, reads back, and removes a scratch file. Setup runs it before Start, and the status page runs it on demand. One `StoreFailure` union (`needs-permission`, `missing`, `unreachable`, `rejected`) covers `connect`, `probe`, and a `StoreError` thrown mid-cycle (per boundary-discipline). The popup turns each failure into one sentence and one button through an exhaustive `actionFor`.
 
 `folder-store.ts` owns every File System Access hazard. `chooseFolder` runs in the app page inside a click. It finds or creates `Helium Sync/`, saves the handle in the `candidate` slot, and probes it. The worker promotes `candidate` to `current` on Start, under the cycle lock. Each slot has one writer, and backing out of setup changes nothing. `connectFolder` runs in the worker and never prompts. It returns a `StoreConnection`, and a `Store` exists only in the `ready` variant, so no code path can write without access (per type-system-discipline). The popup never touches File System Access, because the picker and the permission bubble take focus and close it.
+
+### Every file is sealed with one sync key
+
+Round 3, decided by Conan on 2026-10-06: a generated key rather than a passphrase, and encryption is mandatory, with no plaintext mode and no migration (nothing was deployed).
+
+- **The key.** 256 random bits (`sync-key.ts`), shown as `HSK-` plus 13 groups of 4 Crockford base32 digits. The first device mints it; each other device pastes it. It lives in `DeviceLocal` beside the device name, so Start, Change folder, and an idle rejoin carry it like the rest of the setup, and Forget drops it. It never enters the folder. A random key cannot be guessed from a leaked folder the way a passphrase can.
+- **The envelope.** Every file, manifests included, is a plaintext header line and then `iv ‖ AES-256-GCM(gzip(canonical JSON))`. The header names the codec, the format version (now 2), and a `keyId`, a 64-bit HKDF fingerprint of the key. The GCM associated data is the header plus the file's store key, so bytes open only at the path they were sealed for and under the header they were sealed with. A file copied into another device's folder, a forged header, or a torn write all read as "not yet".
+- **Other keys.** A file whose header names another `keyId` reads as `other-key`, not as damage. A device under another key in the same folder is not a peer: its manifest is unreadable, so it is skipped with an `other-key` warning. Setup's preview turns "devices here, none under this key" into `needs-key`, and Start re-checks it under the cycle lock.
+- **What still shows.** Device ids, which files exist (so which UTC days have history), their sizes, and when they change. Device names, the file list, and `lastSeen` are inside the sealed manifest.
+- **Integrity.** Only key holders can write a file a peer accepts. Someone who can write the folder can still delete files or restore old ones; the existing seq and rollback checks handle the second.
+
+The engine builds the cipher from `DeviceLocal.key` at the start of every cycle and from the pasted key in a preview, so `EngineDeps` no longer takes a codec.
 
 ### The P7 ladder picks the store
 
@@ -170,6 +192,29 @@ Each device publishes only its own visits, one shard per UTC day, and readers ta
 - **Pull.** For each live peer, newest day first, each shard whose manifest hash differs from the one applied is opened against that hash and handed to the sink. The sink replaces everything indexed for (peer, day). A day that left a peer's manifest, or a peer gone idle, is dropped from the index.
 - **Retention is 90 days**, matching Chromium. An owner drops expired days from its manifest, then deletes the files, then forgets them locally.
 - **Apply means the index.** The default sink is IndexedDB `peerVisits`, which the History tab and `hs` search. helium-sync never calls `history.addUrl`, which would stamp every remote visit "now".
+
+### The reading list is a second register type, keyed by url
+
+Round 3. `chrome.readingList` exists in Helium and is keyed by url (P8), so `ReadingItem`'s ItemId is `rl.` plus a sha256 prefix of the url Chromium stored. Every device derives the same id for the same page. The channel keeps no id map, `adopt` is the identity, and two devices adding one page before syncing make one entry with one title. `title` and `read` are last-writer-wins registers; removal is a tombstone like a bookmark's. `normalize` keeps one entry per url, because a forged peer file could name a url under a second id, and Chromium refuses a duplicate. The cycle is `syncRegisters` unchanged, run after bookmarks with the clock bookmarks committed. The mass-delete guard and the review page cover it with their own noun.
+
+### Extensions are a snapshot: offered, never installed
+
+Round 3. Extensions cannot install extensions (P8), so syncing them means showing each device what the others have. That is a third model, `SnapshotType`: each device publishes its own list whole (`extensions.hsync`), readers keep each live peer's last good copy, and nothing is merged or applied. `snapshot-cycle.ts` is the whole cycle.
+
+`management` is an optional permission, granted from the Extensions page with one click. Until it is granted, the source reads null and nothing is published, so a device shares its list only once its user asks. The report carries live peers' lists; the page compares them with `management.getAll()` on the spot and lists what is missing, each with [Add] to its Chrome Web Store page (`installType: normal`). Unpacked and other installs are named but not linkable.
+
+### Full profile mode: three register types behind a companion that writes only while Helium is closed
+
+Round 3, decided by Conan on 2026-10-06: unprotected settings, custom search engines, and addresses; a single companion binary, macOS first; writes happen automatically after Helium quits. Protected settings, the default search engine, and cards stay out (P9: they need the keychain-bound hashes or keys, and a wrong write resets them with a banner or silently).
+
+- **The contract** is `extension/src/profile-mode.ts`, imported by both sides: the three record types and register types, the settings allowlist, and the native messaging protocol (`hello`, `read`, `bind`, `stage`).
+- **Settings** are items keyed by pref path, inside `SETTINGS_ALLOWLIST` only, which `normalize` enforces against peer files too. An absent pref is Chromium's default, so removing the item resets the pref. **Search engines** are custom `keywords` rows keyed by `sync_guid`, adopted by keyword and url. **Addresses** are `addresses` rows with their `address_type_tokens`, keyed by guid, adopted by non-empty tokens, one register for the whole address.
+- **Staging.** The companion reads the files at any time: Preferences as JSON, Web Data through `?immutable=1`. It never writes while Helium runs. `apply` in the extension's channel stages each change with the value it replaces, and `read` overlays staged changes whose `before` still matches the file, so the extension's next read equals its target and nothing re-stamps. A helper process waits until Helium has quit (`SingletonLock` gone or its pid dead), backs up `Preferences` and `Web Data`, writes each change whose `before` still matches, and drops the rest: the user changed that value meanwhile, and their edit is folded as a local change on the next cycle.
+- **Ids.** Settings ids are paths, the same everywhere. Engines and addresses keep their local guids in the profile; the companion keeps the local-to-synced alias map that `bind` fills, so adoption never rewrites a row's guid.
+- **Which profile.** A native host is not told which profile launched it. The companion reads the user data dir from its parent process's command line (default `~/Library/Application Support/net.imput.helium`), lists profiles from Local State, and the extension stores the one the user picked (just one: picked automatically).
+- **Off by default, per device.** Until the user grants the optional `nativeMessaging` permission, installs the companion, and turns the mode on in Advanced, the three channels are absent: the types report `off`, publish nothing, and apply nothing. Peers keep what they merged.
+- **Web Data version.** Rows are read and written only when `meta.version` is in `WEB_DATA_VERSIONS` (154 today). Otherwise settings still sync and the page says rows wait for an update.
+- **Implementation notes.** A channel's `read` may return null ("this type cannot be read now"); `syncRegisters` then reports `off` and keeps its state and published file, so an unsupported Web Data version never reads as deleting every row. The profile status (`off`, `unavailable`, `on` with pending count) lives in `Shown.profile`, built by the worker, because the engine cannot see permissions or the companion. `RegisterType.emptyReadIsSuspect` keeps the "empty read means a failed read" rule for bookmarks only; lists people empty on purpose rely on the fraction rule. The dev build holds its optional permissions up front so scripted e2e runs need no prompt. Verified on scratch Helium by `extension/e2e/profile-mode.mjs` (15/15).
 
 ### Local state has one writer per record
 
@@ -308,7 +353,7 @@ Open from unit 1:
 
 Resolved on 2026-10-06. All three recommendations were accepted (see Implementation reconciliation).
 
-1. **Should history be on by default, given no encryption?** I recommend yes. Setup shows a checked "Sync history" box with one sentence beside it. "Bookmarks and the last 90 days of history are stored unencrypted in this folder." Unchecking it keeps sync bookmark-only, and the toggle stays in Advanced.
+1. **Should history be on by default, given no encryption?** (Superseded by round 3: the folder is now encrypted.) I recommend yes. Setup shows a checked "Sync history" box with one sentence beside it. "Bookmarks and the last 90 days of history are stored unencrypted in this folder." Unchecking it keeps sync bookmark-only, and the toggle stays in Advanced.
 2. **If P7 lands on rung C (one click after each browser start), do we accept it or switch the default to WebDAV?** I recommend accepting C for v1. Local-only cycles lose nothing while paused, the click takes two seconds, and WebDAV costs most users an account. Revisit if early users report the click as friction.
 3. **Is the companion (file mode) v1 or v1.1?** I recommend v1.1. The boundary is one sink decorator plus `companion/`, so it ships later with no engine change. v1 then needs no `nativeMessaging` justification in its first CWS review.
 

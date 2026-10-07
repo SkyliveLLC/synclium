@@ -1,5 +1,5 @@
-// The register model's cycle. Bookmarks run through it; a future register type (settings, search engines)
-// would too.
+// The register model's cycle. Bookmarks, the reading list, and full profile mode's settings, search engines, and
+// addresses all run through it.
 //
 // Local-only cycles (no store, or a tripped fuse) still fold, commit, and apply the merge of own and last good
 // copies. Edits get stamps near the time they were made, not the time the store came back, so a stale edit
@@ -20,7 +20,8 @@ import {
 } from './crdt.ts';
 import type { RegisterChannel, RegisterLocal } from './ports.ts';
 import type { Blocked, ChangeSummary, CycleContext, RegisterOutcome, Wanted, Warning } from './engine.ts';
-import { encodeRegisterContent, encodeStateFile, keys, open, parseStateFile, plaintextHash, registerRel, type FileEntry, type RelName, type StateFile } from './store-format.ts';
+import { encodeRegisterContent, encodeStateFile, fileRel, parseStateFile, plaintextHash, type FileEntry, type RelName, type StateFile } from './store-format.ts';
+import { fetchPeerBody } from './peer-file.ts';
 
 export type RegisterStep<R extends Rec> = {
   readonly local: RegisterLocal<R>;
@@ -53,31 +54,9 @@ async function fetchPeerFile<R extends Rec>(
   entry: FileEntry,
   warnings: Warning[],
 ): Promise<FetchedFile<R>> {
-  const fetched = await ctx.store.use((store) => store.get(keys.file(peer, rel), null));
+  const fetched = await fetchPeerBody(ctx, peer, rel, entry, warnings);
   if (fetched === null) return { kind: 'keep' };
-  if (fetched.kind !== 'ok') {
-    warnings.push({ kind: 'not-yet', peer, file: rel });
-    return { kind: 'keep' };
-  }
-  const opened = await open(fetched.bytes, ctx.codec, entry);
-  switch (opened.kind) {
-    case 'ok':
-      break;
-    case 'not-yet':
-      warnings.push({ kind: 'not-yet', peer, file: rel });
-      return { kind: 'keep' };
-    case 'newer-format':
-      warnings.push({ kind: 'newer-version', peer, file: rel, version: opened.formatVersion });
-      return { kind: 'keep' };
-    case 'unknown-codec':
-      warnings.push({ kind: 'unknown-codec', peer, codec: opened.codec });
-      return { kind: 'keep' };
-    default: {
-      const unreachable: never = opened;
-      return unreachable;
-    }
-  }
-  const parsed = parseStateFile(opened.body, type, { device: peer });
+  const parsed = parseStateFile(fetched.body, type, { device: peer });
   switch (parsed.kind) {
     case 'ok':
       return { kind: 'file', file: parsed.file };
@@ -122,7 +101,7 @@ export async function syncRegisters<R extends Rec>(
   state: RegisterLocal<R> | null,
   opts: RegisterOptions<R>,
 ): Promise<RegisterStep<R>> {
-  const rel = registerRel(type);
+  const rel = fileRel(type);
   const tl: RegisterLocal<R> = state ?? { own: new Map(), acked: new Map(), seq: 0, applied: null, peers: new Map() };
   const warnings: Warning[] = [];
   const dryRun = opts.dryRun === true;
@@ -167,6 +146,7 @@ export async function syncRegisters<R extends Rec>(
 
   // Adoption: local nodes the merge does not know take the ids of equal-content synced items nobody shows.
   const raw = await channel.read(tl.applied);
+  if (raw === null) return { local: tl, outcome: { kind: 'off' }, wanted: ownFile(tl, prevPlain, stamp), warnings, adopted: noAdoption };
   const remoteLive = materialize(remote, type.normalize);
   const unclaimed = new Map<ItemId, R>();
   for (const [id, record] of remoteLive) if (!raw.has(id) && !(tl.applied?.has(id) ?? false)) unclaimed.set(id, record);
@@ -178,7 +158,7 @@ export async function syncRegisters<R extends Rec>(
   const matched = adopted.aliases.size + known;
   const adoption = { matched, toAdd: unclaimed.size - adopted.aliases.size, toPublish: raw.size - matched };
 
-  const guard = massDelete(tl.applied, observed, ctx.policy.massDelete);
+  const guard = massDelete(tl.applied, observed, ctx.policy.massDelete, type.emptyReadIsSuspect);
   if (guard !== null && !opts.force && tl.applied !== null) {
     const removed = summarize(diffLive(tl.applied, observed).filter((c) => c.op === 'remove'), type.label);
     return { local: tl, outcome: { kind: 'blocked', why: { kind: 'mass-delete', removed, of: guard.of } }, wanted: ownFile(tl, prevPlain, stamp), warnings, adopted: adoption };

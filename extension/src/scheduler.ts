@@ -12,7 +12,7 @@
 // through a small interface, so the whole scheduler runs in a Node test.
 import type { Asks, Budget } from './ports.ts';
 
-export type Trigger = 'install' | 'startup' | 'poll' | 'resume' | 'setup' | 'manual' | 'bookmarks' | 'history-removed' | 'apply-deletions';
+export type Trigger = 'install' | 'startup' | 'poll' | 'resume' | 'setup' | 'manual' | 'bookmarks' | 'reading-list' | 'extensions' | 'history-removed' | 'apply-deletions';
 
 /** Latency a trigger may wait to coalesce a burst. The `resume` alarm is armed at max(this, 30 s) as the backstop. */
 export const DEBOUNCE_MS = {
@@ -23,6 +23,8 @@ export const DEBOUNCE_MS = {
   setup: 0,
   manual: 0,
   bookmarks: 5_000,
+  'reading-list': 5_000,
+  extensions: 5_000,
   'history-removed': 5_000,
   'apply-deletions': 0,
 } as const satisfies Record<Trigger, number>;

@@ -75,3 +75,18 @@
 - Initial picker grant lapses after the first restart (queryPermission=prompt).
 - requestPermission from a click shows: "<ext> wants to / View and edit files from the last time you visited this site: <folder>" [Allow this time] [Allow on every visit] [Don't allow].
 - After "Allow on every visit", the worker stayed granted and wrote across two more restarts. => Rung B: one click, once, after the first restart.
+
+## P8: readingList + management APIs (2026-10-06, scratch Helium 0.18.3.1 / Chromium 154; prototypes/p8-apis/)
+- chrome.readingList present: query/addEntry/updateEntry/removeEntry + onEntryAdded/Updated/Removed (fire for API calls too). Entry: {url, title, hasBeenRead, creationTime, lastUpdateTime}; timestamps cannot be set.
+- http(s) only ("URL is not supported." otherwise). Urls are normalized on store (https://Example.COM -> https://example.com/); #fragment and ?query make distinct entries.
+- Errors: "Duplicate URL.", "URL not found.", update with neither title nor hasBeenRead refused. Title-only updates do not bump lastUpdateTime. One update of both fields fires two onEntryUpdated.
+- Persists across restart (Sync Data/LevelDB). Adding an entry creates no bookmark. UI: chrome://read-later.top-chrome/ ("Reading List").
+- chrome.management: getAll/get/getSelf/setEnabled/uninstall/... and onInstalled/onUninstalled/onEnabled/onDisabled. No install method. --load-extension -> installType "development"; Helium's bundled uBlock Origin -> installType "other". No updateUrl key on either.
+
+## P9: profile files for the opt-in full profile mode (2026-10-06, scratch, mock keychain; prototypes/p9-profile/notes.md)
+- Secure Preferences protects: homepage, homepage_is_newtabpage, show_home_button, restore_on_startup, startup_urls, default_search_provider_data, pinned_tabs, extensions.settings, developer mode. Unprotected (Preferences): download prompt, fonts, languages, content-setting defaults, Helium UI toggles, autofill enable flags.
+- MAC = HMAC-SHA256(key "", hardware UUID as ioreg prints it + path + Chromium-sorted JSON value). Reproduced 24/24, plus super_mac. New in this build: a per-pref encrypted_hash (SHA-256 of path+value encrypted with the Safe Storage key); a protected edit survives only with both correct (super_encrypted_hash may stay stale).
+- Closed-browser edits: unprotected pref survives; protected pref with a stale MAC is reset with a "Helium reset these settings" banner; default search engine needs the protected value, both hashes, the unprotected mirror, and the guid pref to agree, else it silently reverts.
+- Web Data: keywords (sync_guid, prepopulate_id=0 for custom, new encrypted url_hash; NULL/wrong is tolerated today), autocomplete, addresses + address_type_tokens, credit_cards (v10 AES-128-CBC, PBKDF2 saltysalt/1003; real key inferred from keychain item "Helium Storage Key"). Rows added while closed show up after launch. Sync metadata tables are empty.
+- Address and card autofill ship disabled in Helium.
+- Never sync: window placement, download/save dirs, extension install paths, `protection`, media salts, exit type, session data, metrics, choice-screen state, all of Local State, anything keychain-encrypted.

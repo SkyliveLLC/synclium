@@ -1,12 +1,14 @@
 // app.html, the options page. Routes by hash, so the popup and the worker can deep-link:
-//   #setup     folder or WebDAV server, device name, history choice, join preview, Start
+//   #setup     folder or WebDAV server, sync key, device name, history choice, join preview, Start
 //   #allow     re-grant access after it lapsed (a folder after a restart, a revoked server permission)
 //   #status    the dashboard: status, a map of devices around the store, bookmarks/history/store facts, problems
 //   #review    a blocked mass delete and [Apply these deletions]
 //   #history   search over peers' visits, grouped by device and day
-//   #advanced  settings: history toggle, change folder or server, forget this device
-// The folder picker and the permission prompts need the click's gesture, so chooseFolder, chooseWebdav, and
-// allowStore are called synchronously in their handlers.
+//   #extensions  share this device's extensions (optional `management` permission), offers from the others
+//   #advanced  settings: history toggle, sync key, change folder or server, full profile mode (optional
+//              `nativeMessaging`), forget this device
+// The folder picker and the permission prompts need the click's gesture, so chooseFolder, chooseWebdav,
+// allowStore, and chrome.permissions.request are called synchronously in their handlers.
 // Peer data (titles, urls, device names) only ever reaches the DOM as text or as an http(s) href.
 import type { JoinPreview } from './engine.ts';
 import {
@@ -18,8 +20,11 @@ import {
   folderFact,
   groupVisits,
   historyFact,
+  keyNote,
+  nounFor,
   previewSentence,
   primaryAction,
+  profileSentence,
   readShown,
   shownFrom,
   statusSentence,
@@ -30,13 +35,16 @@ import {
   type Shown,
 } from './ui.ts';
 import { parsePlatform } from './store-format.ts';
+import { formatSyncKey, mintSyncKey, parseSyncKey, type SyncKey } from './sync-key.ts';
+import { offers, storePage } from './extensions.ts';
 import { chooseFolder } from './folder-store.ts';
 import { chooseWebdav, parseDavUrl } from './webdav-store.ts';
 import { allowStore, type Chosen } from './stores.ts';
 import { slots, type StoreChoice } from './local.ts';
 import type { StoreFailure } from './ports.ts';
+import { PROTOCOL_VERSION } from './profile-mode.ts';
 
-const SECTIONS = ['setup', 'allow', 'status', 'review', 'history', 'advanced'] as const;
+const SECTIONS = ['setup', 'allow', 'status', 'review', 'history', 'extensions', 'advanced'] as const;
 type Section = (typeof SECTIONS)[number];
 const isSection = (s: string): s is Section => SECTIONS.some((name) => name === s);
 
@@ -70,6 +78,13 @@ const setup = {
   choose: byId('choose', HTMLButtonElement),
   chooseNote: byId('choose-note', HTMLParagraphElement),
   storeLabel: byId('store-label', HTMLParagraphElement),
+  keyStep: byId('key-step', HTMLLIElement),
+  keyNew: byId('key-new', HTMLDivElement),
+  keyShown: byId('key-shown', HTMLElement),
+  keyCopy: byId('key-copy', HTMLButtonElement),
+  keyEnter: byId('key-enter', HTMLDivElement),
+  keyInput: byId('key-input', HTMLInputElement),
+  keyNote: byId('key-note', HTMLParagraphElement),
   name: byId('name', HTMLInputElement),
   historyOn: byId('history-on', HTMLInputElement),
   preview: byId('preview', HTMLParagraphElement),
@@ -77,22 +92,44 @@ const setup = {
   result: byId('setup-result', HTMLParagraphElement),
 };
 let started: JoinPreview | null = null;
+/** The key a first device keeps. Minted once per visit; a key pasted into the field takes its place. */
+const freshKey = mintSyncKey();
+/** Only the newest preview renders: typing a key fires one per pause. */
+let previews = 0;
+
+const copy = (key: SyncKey) => void navigator.clipboard.writeText(formatSyncKey(key));
 
 async function enterSetup(): Promise<void> {
   if (setup.name.value === '') setup.name.value = DEVICE_NAMES[parsePlatform((await chrome.runtime.getPlatformInfo()).os)];
-  const preview = await ask({ kind: 'preview' });
+  const typed = setup.keyInput.value.trim();
+  const pasted = typed === '' ? null : parseSyncKey(typed);
+  const key = pasted ?? freshKey;
+  const asked = ++previews;
+  const preview = await ask({ kind: 'preview', key });
+  if (asked !== previews) return;
   const ready = preview.kind !== 'not-ready';
+  const startable = preview.kind === 'first-device' || preview.kind === 'joining';
   setup.chooseNote.hidden = ready;
   setup.storeLabel.hidden = !ready;
   if (ready) setup.storeLabel.textContent = `Store: ${preview.label}`;
-  setup.preview.hidden = !ready;
+  setup.keyStep.hidden = !ready;
+  setup.keyNew.hidden = preview.kind !== 'first-device';
+  setup.keyEnter.hidden = !ready || preview.kind === 'first-device';
+  setup.keyShown.textContent = formatSyncKey(key);
+  setup.keyCopy.onclick = () => copy(key);
+  setup.keyNote.textContent = keyNote(preview, typed === '' ? 'nothing' : pasted === null ? 'not-a-key' : 'key');
+  setup.preview.hidden = !startable;
   setup.preview.textContent = previewSentence(preview);
-  setup.start.disabled = !ready;
+  setup.start.disabled = !startable;
   setup.start.onclick = async () => {
     setup.start.disabled = true;
-    const result = await ask({ kind: 'start', name: setup.name.value, historyOn: setup.historyOn.checked });
+    const result = await ask({ kind: 'start', name: setup.name.value, historyOn: setup.historyOn.checked, key });
     if (result.kind === 'not-ready') {
       setup.preview.textContent = previewSentence({ kind: 'not-ready', store: result.store });
+      return;
+    }
+    if (result.kind === 'wrong-key') {
+      await enterSetup(); // the folder gained devices under another key since the preview
       return;
     }
     started = preview;
@@ -105,6 +142,12 @@ function setupNote(text: string): void {
   setup.preview.hidden = false;
   setup.start.disabled = true;
 }
+
+let keyTimer: number | undefined;
+setup.keyInput.oninput = () => {
+  window.clearTimeout(keyTimer);
+  keyTimer = window.setTimeout(() => void enterSetup(), 250);
+};
 
 /**
  * After the picker or the Connect click. A passed probe made the choice the candidate, so the preview refreshes;
@@ -219,6 +262,7 @@ const status = {
   folder: byId('map-folder', HTMLDivElement),
   peers: byId('map-peers', HTMLUListElement),
   problems: byId('problems', HTMLDivElement),
+  profile: byId('status-profile', HTMLParagraphElement),
   warnings: byId('warnings', HTMLUListElement),
 };
 const facts = {
@@ -243,6 +287,8 @@ function renderStatus(): void {
   const now = Date.now();
   status.page.dataset.tone = toneOf(view);
   status.text.textContent = statusSentence(view, now);
+  status.profile.textContent = profileSentence(shown.profile);
+  status.profile.hidden = status.profile.textContent === '';
   const next = primaryAction(view);
   status.action.hidden = next === null;
   status.sync.classList.toggle('primary', next === null);
@@ -318,7 +364,7 @@ function renderReview(): void {
     review.sample.replaceChildren();
     return;
   }
-  review.line.textContent = `Sync stopped before deleting ${view.removed} of ${view.of} bookmarks. If you meant to delete them, apply the deletions. Otherwise restore them in Helium and sync resumes.`;
+  review.line.textContent = `Sync stopped before deleting ${view.removed} of ${nounFor(view.what, view.of)}. If you meant to delete them, apply the deletions. Otherwise restore them in Helium and sync resumes.`;
   rows(review.sample, view.sample, '');
 }
 onShown.push(renderReview);
@@ -370,6 +416,58 @@ search.q.oninput = () => {
   searchTimer = window.setTimeout(() => void runSearch(), 150);
 };
 
+// ---------- Extensions ----------
+
+const exts = {
+  off: byId('ext-off', HTMLDivElement),
+  on: byId('ext-on', HTMLDivElement),
+  grant: byId('ext-grant', HTMLButtonElement),
+  revoke: byId('ext-revoke', HTMLButtonElement),
+  offers: byId('ext-offers', HTMLUListElement),
+};
+const MANAGEMENT: chrome.permissions.Permissions = { permissions: ['management'] };
+
+async function renderExtensions(): Promise<void> {
+  const granted = await chrome.permissions.contains(MANAGEMENT);
+  exts.off.hidden = granted;
+  exts.on.hidden = !granted;
+  if (!granted) return;
+  const here = new Set((await chrome.management.getAll()).map((ext) => ext.id));
+  const peers = shown.report?.kind === 'cycle' ? shown.report.extensions : [];
+  const list = offers(peers, here);
+  if (list.length === 0) {
+    rows(exts.offers, [], peers.length === 0 ? 'No other device shares its extensions yet. Turn this on there too.' : 'This device has every extension your other devices share.');
+    return;
+  }
+  exts.offers.replaceChildren(
+    ...list.map((offer) => {
+      const row = el('li', '', 'offer');
+      const label = el('span', offer.name);
+      label.append(' ', el('span', `on ${offer.on.join(', ')}`, 'on'));
+      if (offer.source === 'store') {
+        const add = el('a', 'Add');
+        add.href = storePage(offer.id);
+        add.target = '_blank';
+        add.rel = 'noopener noreferrer';
+        row.append(label, add);
+      } else row.append(label, el('span', offer.source === 'unpacked' ? 'Loaded unpacked there' : 'Not from the Web Store', 'on'));
+      return row;
+    }),
+  );
+}
+onShown.push(() => void renderExtensions());
+
+// The permission prompt needs this click's gesture, so the request comes first.
+exts.grant.onclick = async () => {
+  if (await chrome.permissions.request(MANAGEMENT)) await ask({ kind: 'sync-now' });
+  await renderExtensions();
+};
+exts.revoke.onclick = async () => {
+  await chrome.permissions.remove(MANAGEMENT);
+  await ask({ kind: 'sync-now' });
+  await renderExtensions();
+};
+
 // ---------- Advanced ----------
 
 const advanced = {
@@ -378,6 +476,9 @@ const advanced = {
   forget: byId('forget', HTMLButtonElement),
   deviceId: byId('device-id', HTMLParagraphElement),
   folder: byId('adv-folder', HTMLParagraphElement),
+  showKey: byId('show-key', HTMLButtonElement),
+  key: byId('adv-key', HTMLElement),
+  keyCopy: byId('adv-key-copy', HTMLButtonElement),
 };
 
 function renderAdvanced(): void {
@@ -389,6 +490,13 @@ function renderAdvanced(): void {
   advanced.folder.textContent = report === null || report.store.access === 'not-set-up' ? 'Nothing is set up.' : `Syncing through ${report.store.label}.`;
 }
 onShown.push(renderAdvanced);
+advanced.showKey.onclick = async () => {
+  const key = await ask({ kind: 'show-key' });
+  advanced.key.hidden = false;
+  advanced.key.textContent = key === null ? 'This device is not set up.' : formatSyncKey(key);
+  advanced.keyCopy.hidden = key === null;
+  if (key !== null) advanced.keyCopy.onclick = () => copy(key);
+};
 advanced.history.onchange = () => void ask({ kind: 'set-history', on: advanced.history.checked });
 // Setup offers both kinds of store. Its Start joins the new one as a new device (background.ts `start`). The
 // candidate still holds the store in use, so it is cleared first: Start waits for a new choice.
@@ -396,6 +504,73 @@ advanced.change.onclick = async () => {
   await slots.clearCandidate();
   location.hash = '#setup';
 };
+// ---------- Full profile mode (in Advanced) ----------
+
+const pm = {
+  line: byId('pm-line', HTMLParagraphElement),
+  allow: byId('pm-allow', HTMLDivElement),
+  grant: byId('pm-grant', HTMLButtonElement),
+  install: byId('pm-install', HTMLDivElement),
+  command: byId('pm-command', HTMLElement),
+  copy: byId('pm-copy', HTMLButtonElement),
+  error: byId('pm-error', HTMLParagraphElement),
+  check: byId('pm-check', HTMLButtonElement),
+  pick: byId('pm-pick', HTMLDivElement),
+  profileRow: byId('pm-profile-row', HTMLLabelElement),
+  profile: byId('pm-profile', HTMLSelectElement),
+  on: byId('pm-on', HTMLButtonElement),
+  off: byId('pm-off', HTMLButtonElement),
+};
+const NATIVE: chrome.permissions.Permissions = { permissions: ['nativeMessaging'] };
+const INSTALL = `helium-sync-companion install --extension-id ${chrome.runtime.id}`;
+
+function renderProfileLine(): void {
+  pm.line.textContent = profileSentence(shown.profile);
+  pm.line.hidden = pm.line.textContent === '';
+}
+onShown.push(renderProfileLine);
+
+/** One step at a time: allow, install, pick a profile and turn on, or turn off. Asks the companion for hello. */
+async function renderProfileMode(): Promise<void> {
+  const setup = await ask({ kind: 'profile-status' });
+  const { hello } = setup;
+  const compatible = hello !== null && hello.protocol === PROTOCOL_VERSION;
+  pm.allow.hidden = setup.permission;
+  pm.install.hidden = !setup.permission || compatible;
+  pm.pick.hidden = !compatible || setup.on !== null;
+  pm.off.hidden = setup.on === null;
+  pm.command.textContent = INSTALL;
+  pm.error.hidden = setup.error === null && (hello === null || compatible);
+  pm.error.textContent =
+    hello !== null && !compatible ? `This companion speaks protocol ${hello.protocol}; this extension needs ${PROTOCOL_VERSION}. Install the companion from the same build.` : `The companion didn't answer: ${setup.error ?? ''}`;
+  if (!compatible || setup.on !== null) return;
+  pm.profile.replaceChildren(...hello.profiles.map((p) => new Option(p.name === p.dir ? p.dir : `${p.name} (${p.dir})`, p.dir)));
+  pm.profileRow.hidden = hello.profiles.length < 2;
+  pm.on.disabled = hello.profiles.length === 0;
+  if (hello.profiles.length === 0) {
+    pm.error.hidden = false;
+    pm.error.textContent = `The companion found no Helium profiles in ${hello.userDataDir}.`;
+  }
+}
+
+// The permission prompt needs this click's gesture, so the request comes first.
+pm.grant.onclick = async () => {
+  await chrome.permissions.request(NATIVE);
+  await renderProfileMode();
+};
+pm.copy.onclick = () => void navigator.clipboard.writeText(INSTALL);
+pm.check.onclick = () => void renderProfileMode();
+pm.on.onclick = async () => {
+  pm.on.disabled = true;
+  await ask({ kind: 'set-profile-mode', dir: pm.profile.value });
+  pm.on.disabled = false;
+  await renderProfileMode();
+};
+pm.off.onclick = async () => {
+  await ask({ kind: 'set-profile-mode', dir: null });
+  await renderProfileMode();
+};
+
 advanced.forget.onclick = async () => {
   if (!confirm("Forget this device? Its files leave the sync folder. Bookmarks and history in Helium stay.")) return;
   await ask({ kind: 'forget-this-device' });
@@ -404,7 +579,7 @@ advanced.forget.onclick = async () => {
 
 // ---------- Routing ----------
 
-const enter: { readonly [S in Section]?: () => Promise<void> } = { setup: enterSetup, allow: enterAllow, history: runSearch };
+const enter: { readonly [S in Section]?: () => Promise<void> } = { setup: enterSetup, allow: enterAllow, history: runSearch, extensions: renderExtensions, advanced: renderProfileMode };
 
 function route(): void {
   const hash = location.hash.slice(1);

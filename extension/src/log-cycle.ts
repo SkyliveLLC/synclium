@@ -139,7 +139,7 @@ export async function syncLog<E extends Ev>(ctx: CycleContext, type: LogType<E>,
       warnings.push({ kind: 'not-yet', peer: candidate.peer, file });
       continue;
     }
-    const opened = await open(fetched.bytes, ctx.codec, candidate.entry);
+    const opened = await open(fetched.bytes, ctx.cipher, candidate.key, candidate.entry);
     switch (opened.kind) {
       case 'ok': {
         const parsed = parseLogShard(opened.body, type, { device: candidate.peer, day: candidate.day });
@@ -163,7 +163,9 @@ export async function syncLog<E extends Ev>(ctx: CycleContext, type: LogType<E>,
         }
         break;
       }
+      // A shard under another key behind a manifest under ours was not written by that peer: as good as torn.
       case 'not-yet':
+      case 'other-key':
         warnings.push({ kind: 'not-yet', peer: candidate.peer, file });
         break;
       case 'newer-format':

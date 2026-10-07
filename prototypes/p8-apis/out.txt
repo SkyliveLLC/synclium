@@ -1,0 +1,420 @@
+### readingList exists / keys
+{
+ "type": "object",
+ "keys": [
+  "onEntryUpdated",
+  "onEntryRemoved",
+  "onEntryAdded",
+  "addEntry",
+  "query",
+  "removeEntry",
+  "updateEntry"
+ ]
+}
+### query({}) empty
+[]
+### addEntry https
+{
+ "ok": "undefined"
+}
+### query after add
+[
+ {
+  "creationTime": 1791333351168,
+  "hasBeenRead": false,
+  "lastUpdateTime": 1791333351168,
+  "title": "Example A",
+  "url": "https://example.com/a"
+ }
+]
+### duplicate add
+"ERR: Duplicate URL."
+### add missing url
+{
+ "exception": "TypeError: Error in invocation of readingList.addEntry(readingList.AddEntryOptions entry, optional function callback): Error at parameter 'entry': Missing required property 'url'.\n    at <anonymous>:1:20"
+}
+### add missing url (sync throw?)
+"THROW: Error in invocation of readingList.addEntry(readingList.AddEntryOptions entry, optional function callback): Error at parameter 'entry': Missing required property 'url'."
+### add missing hasBeenRead
+"THROW: Error in invocation of readingList.addEntry(readingList.AddEntryOptions entry, optional function callback): Error at parameter 'entry': Missing required property 'hasBeenRead'."
+### add missing title
+"THROW: Error in invocation of readingList.addEntry(readingList.AddEntryOptions entry, optional function callback): Error at parameter 'entry': Missing required property 'title'."
+### url schemes
+{
+ "http://example.com/h": "ok",
+ "file:///tmp/x.html": "ERR: URL is not supported.",
+ "chrome://settings/": "ERR: URL is not supported.",
+ "javascript:alert(1)": "ERR: URL is not supported.",
+ "about:blank": "ERR: URL is not supported.",
+ "data:text/plain,hi": "ERR: URL is not supported.",
+ "ftp://example.com/f": "ERR: URL is not supported.",
+ "chrome-extension://abc/x.html": "ERR: URL is not supported.",
+ "not a url": "ERR: URL is not valid."
+}
+### updateEntry title+read
+"ok"
+### query url filter after update
+[
+ {
+  "creationTime": 1791333351168,
+  "hasBeenRead": true,
+  "lastUpdateTime": 1791333351598,
+  "title": "Renamed",
+  "url": "https://example.com/a"
+ }
+]
+### updateEntry missing entry
+"ERR: URL not found."
+### updateEntry no fields
+"ERR: At least one of `title` or `hasBeenRead` must be provided."
+### query filters hasBeenRead:false
+[
+ "http://example.com/h"
+]
+### query filter title
+[
+ "https://example.com/a"
+]
+### removeEntry
+"ok"
+### removeEntry missing
+"ERR: URL not found."
+### events captured
+[
+ {
+  "n": "onEntryAdded",
+  "e": {
+   "creationTime": 1791333351168,
+   "hasBeenRead": false,
+   "lastUpdateTime": 1791333351168,
+   "title": "Example A",
+   "url": "https://example.com/a"
+  }
+ },
+ {
+  "n": "onEntryAdded",
+  "e": {
+   "creationTime": 1791333351545,
+   "hasBeenRead": false,
+   "lastUpdateTime": 1791333351545,
+   "title": "http://example.com/h",
+   "url": "http://example.com/h"
+  }
+ },
+ {
+  "n": "onEntryUpdated",
+  "e": {
+   "creationTime": 1791333351168,
+   "hasBeenRead": false,
+   "lastUpdateTime": 1791333351168,
+   "title": "Renamed",
+   "url": "https://example.com/a"
+  }
+ },
+ {
+  "n": "onEntryUpdated",
+  "e": {
+   "creationTime": 1791333351168,
+   "hasBeenRead": true,
+   "lastUpdateTime": 1791333351598,
+   "title": "Renamed",
+   "url": "https://example.com/a"
+  }
+ },
+ {
+  "n": "onEntryRemoved",
+  "e": {
+   "creationTime": 1791333351545,
+   "hasBeenRead": false,
+   "lastUpdateTime": 1791333351545,
+   "title": "http://example.com/h",
+   "url": "http://example.com/h"
+  }
+ }
+]
+### bookmarks tree (does RL create bookmarks?)
+"[{\"children\":[{\"children\":[],\"dateAdded\":1791333331521,\"folderType\":\"bookmarks-bar\",\"id\":\"1\",\"index\":0,\"parentId\":\"0\",\"syncing\":false,\"title\":\"Bookmarks Bar\"},{\"children\":[],\"dateAdded\":1791333331521,\"folderType\":\"other\",\"id\":\"2\",\"index\":1,\"parentId\":\"0\",\"syncing\":false,\"title\":\"Other Bookmarks\"}],\"dateAdded\":1791333331521,\"id\":\"0\",\"syncing\":false,\"title\":\"\"}]"
+### final query
+[
+ {
+  "creationTime": 1791333351168,
+  "hasBeenRead": true,
+  "lastUpdateTime": 1791333351598,
+  "title": "Renamed",
+  "url": "https://example.com/a"
+ }
+]
+### title-only update: lastUpdateTime bump?
+{
+ "before": {
+  "creationTime": 1791333351168,
+  "hasBeenRead": true,
+  "lastUpdateTime": 1791333351598,
+  "title": "Renamed",
+  "url": "https://example.com/a"
+ },
+ "after": {
+  "creationTime": 1791333351168,
+  "hasBeenRead": true,
+  "lastUpdateTime": 1791333351598,
+  "title": "T2",
+  "url": "https://example.com/a"
+ },
+ "events": [
+  {
+   "n": "onEntryUpdated",
+   "e": {
+    "creationTime": 1791333351168,
+    "hasBeenRead": true,
+    "lastUpdateTime": 1791333351598,
+    "title": "T2",
+    "url": "https://example.com/a"
+   }
+  }
+ ]
+}
+### read-only update
+{
+ "after": {
+  "creationTime": 1791333351168,
+  "hasBeenRead": false,
+  "lastUpdateTime": 1791333362198,
+  "title": "T2",
+  "url": "https://example.com/a"
+ },
+ "events": [
+  {
+   "n": "onEntryUpdated",
+   "e": {
+    "creationTime": 1791333351168,
+    "hasBeenRead": false,
+    "lastUpdateTime": 1791333362198,
+    "title": "T2",
+    "url": "https://example.com/a"
+   }
+  }
+ ]
+}
+### URL normalization: add https://Example.com (no path), fragment, query
+{
+ "https://Example.COM": "ok",
+ "https://example.com/a#frag": "ok",
+ "https://example.com/a?q=1": "ok",
+ "all": [
+  [
+   "https://example.com/",
+   true
+  ],
+  [
+   "https://example.com/a",
+   false
+  ],
+  [
+   "https://example.com/a#frag",
+   true
+  ],
+  [
+   "https://example.com/a?q=1",
+   true
+  ]
+ ]
+}
+### query non-normalized url
+[
+ "https://example.com/"
+]
+### empty title
+[
+ {
+  "creationTime": 1791333362341,
+  "hasBeenRead": false,
+  "lastUpdateTime": 1791333362341,
+  "title": "",
+  "url": "https://example.com/empty"
+ }
+]
+### extra field creationTime ignored?
+"THROW: Error in invocation of readingList.addEntry(readingList.AddEntryOptions entry, optional function callback): Error at parameter 'entry': Unexpected property: 'creationTime'."
+### management keys
+[
+ "ExtensionDisabledReason",
+ "ExtensionInstallType",
+ "ExtensionType",
+ "LaunchType",
+ "createAppShortcut",
+ "generateAppForLink",
+ "get",
+ "getAll",
+ "getPermissionWarningsById",
+ "getPermissionWarningsByManifest",
+ "getSelf",
+ "launchApp",
+ "onDisabled",
+ "onEnabled",
+ "onInstalled",
+ "onUninstalled",
+ "setEnabled",
+ "setLaunchType",
+ "uninstall",
+ "uninstallSelf"
+]
+### management.getSelf
+{
+ "description": "",
+ "enabled": true,
+ "homepageUrl": "",
+ "hostPermissions": [],
+ "id": "nkkmhmlhbdgjcpmlphiafjbpahbahpfh",
+ "installType": "development",
+ "isApp": false,
+ "mayDisable": true,
+ "name": "p8 api probe",
+ "offlineEnabled": false,
+ "optionsUrl": "",
+ "permissions": [
+  "bookmarks",
+  "management",
+  "readingList"
+ ],
+ "shortName": "p8 api probe",
+ "type": "extension",
+ "version": "0.0.1",
+ "versionName": ""
+}
+### management.getAll
+[
+ {
+  "description": "Finally, an efficient blocker. Easy on CPU and memory.",
+  "enabled": true,
+  "homepageUrl": "",
+  "hostPermissions": [
+   "<all_urls>",
+   "chrome://favicon/*"
+  ],
+  "icons": [
+   {
+    "size": 16,
+    "url": "chrome://extension-icon/blockjmkbacgjkknlgpkjjiijinjdanf/16/0"
+   },
+   {
+    "size": 32,
+    "url": "chrome://extension-icon/blockjmkbacgjkknlgpkjjiijinjdanf/32/0"
+   },
+   {
+    "size": 64,
+    "url": "chrome://extension-icon/blockjmkbacgjkknlgpkjjiijinjdanf/64/0"
+   },
+   {
+    "size": 128,
+    "url": "chrome://extension-icon/blockjmkbacgjkknlgpkjjiijinjdanf/128/0"
+   }
+  ],
+  "id": "blockjmkbacgjkknlgpkjjiijinjdanf",
+  "installType": "other",
+  "isApp": false,
+  "mayDisable": true,
+  "name": "uBlock Origin",
+  "offlineEnabled": false,
+  "optionsUrl": "chrome-extension://blockjmkbacgjkknlgpkjjiijinjdanf/dashboard.html",
+  "permissions": [
+   "alarms",
+   "contextMenus",
+   "dns",
+   "privacy",
+   "storage",
+   "tabs",
+   "unlimitedStorage",
+   "webNavigation",
+   "webRequest",
+   "webRequestBlocking"
+  ],
+  "shortName": "uBlock₀",
+  "type": "extension",
+  "version": "1.75.0",
+  "versionName": ""
+ },
+ {
+  "description": "",
+  "enabled": true,
+  "homepageUrl": "",
+  "hostPermissions": [],
+  "id": "nkkmhmlhbdgjcpmlphiafjbpahbahpfh",
+  "installType": "development",
+  "isApp": false,
+  "mayDisable": true,
+  "name": "p8 api probe",
+  "offlineEnabled": false,
+  "optionsUrl": "",
+  "permissions": [
+   "bookmarks",
+   "management",
+   "readingList"
+  ],
+  "shortName": "p8 api probe",
+  "type": "extension",
+  "version": "0.0.1",
+  "versionName": ""
+ }
+]
+### chrome://flags entries mentioning reading list / side panel
+[]
+### chrome://read-later.top-chrome/ page
+{
+ "url": "chrome://read-later.top-chrome/",
+ "title": "Reading List",
+ "text": "",
+ "html": 52555
+}
+### chrome://bookmarks text
+{
+ "title": "Bookmarks",
+ "rl": false
+}
+### chrome://flags (deep text) reading/side panel lines
+{
+ "len": 249057,
+ "hits": [
+  "Side Panel Flyover Animation",
+  "Simplifies contents animations while animating vertical tabstrip and side panels, reducing jank on most platforms. When enabled, the animating elements will appear to float over the contents, which resize at the beginning or end of the animation.",
+  "side-panel-flyover-animation",
+  "Use Default Deadline Resizing Policy when animating vertical tabstrip and side panels."
+ ]
+}
+### chrome://read-later.top-chrome/ deep text
+[
+ "Reading List",
+ "html,",
+ "body {",
+ "background: var(--color-side-panel-content-background);",
+ "margin: 0;",
+ "overflow: hidden;",
+ "}",
+ "You'll find your reading list here",
+ "To add a page to read later, click the button",
+ "Unread",
+ "example.com",
+ "·",
+ "27 secs ago",
+ "T2",
+ "example.com",
+ "·",
+ "27 secs ago",
+ "Pages you've read",
+ "Add current tab"
+]
+### before restart: query urls
+### after restart (same profile): query urls
+[
+ "https://example.com/ read=true title=https://Example.COM ct=1791333362246",
+ "https://example.com/a read=false title=T2 ct=1791333351168",
+ "https://example.com/a#frag read=true title=https://example.com/a#frag ct=1791333362246",
+ "https://example.com/a?q=1 read=true title=https://example.com/a?q=1 ct=1791333362246",
+ "https://example.com/empty read=false title= ct=1791333362341"
+]
+### after restart: getSelf installType
+{
+ "installType": "development",
+ "updateUrl": "(absent)",
+ "hasUpdateUrlKey": false
+}
+### note: first 'before restart' eval failed: worker idle (not in /json/list) after ~30s; entries listed after restart are the pre-restart set

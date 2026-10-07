@@ -1,9 +1,10 @@
 // Domain vocabulary shared by every module: branded ids, the HLC stamp, the register layer, and the two
 // data-type models. Pure types plus brand predicates. No chrome.*, no File System Access, no wire shapes.
 //
-// A data type is either a RegisterType (items anyone may edit, merged per field) or a LogType (immutable facts
-// with one author, merged by union). The engine runs one function per model (register-cycle.ts, log-cycle.ts),
-// so a third type plugs into one of two existing cycles.
+// A data type is a RegisterType (items anyone may edit, merged per field), a LogType (immutable facts with one
+// author, merged by union), or a SnapshotType (one device's own state, read by the others, never merged). The
+// engine runs one function per model (register-cycle.ts, log-cycle.ts, snapshot-cycle.ts), so a new type plugs
+// into an existing cycle.
 
 declare const brand: unique symbol;
 export type Brand<T, B extends string> = T & { readonly [brand]: B };
@@ -86,10 +87,10 @@ export type Replica<R extends Rec> = ReadonlyMap<ItemId, Entry<R>>;
 /** Plain state with no stamps. What the profile shows, and what `materialize` produces. */
 export type Live<R extends Rec> = ReadonlyMap<ItemId, R>;
 
-// ---------- The two models ----------
+// ---------- The three models ----------
 
 /** Store path segment, `[a-z][a-z0-9-]*`. Names the type's file (register) or folder (log). */
-type TypeName = 'bookmarks' | 'history';
+type TypeName = 'bookmarks' | 'reading-list' | 'history' | 'extensions' | 'settings' | 'search-engines' | 'addresses';
 
 /**
  * Items any device may edit. Merge, stamping, GC, and the wire format are generic (crdt.ts); a register
@@ -114,6 +115,12 @@ export interface RegisterType<R extends Rec> {
    * of GC, so `normalize` can keep walking it; without this an orphan's re-homing would change when GC ran.
    */
   references(record: R): readonly ItemId[];
+  /**
+   * Whether a read that comes back empty, after something was applied, is suspect enough to stop for review.
+   * Bookmarks: yes, the API always shows the roots, so an empty tree is a failed read. Lists people empty on
+   * purpose (the reading list, search engines, addresses): no; the fraction rule still guards them.
+   */
+  readonly emptyReadIsSuspect: boolean;
   label(record: R): string;
 }
 
@@ -155,4 +162,16 @@ export interface LogType<E extends Ev> {
   /** Authors delete older shards; readers drop older events. History: 90, Chromium's own expiry. */
   readonly retentionDays: number;
   label(event: E): string;
+}
+
+/**
+ * What one device has, published whole by that device and shown by the others. No stamps, no merge, and no
+ * apply: a peer's installed extensions are something this device can offer, not something it can make true.
+ */
+export interface SnapshotType<S extends Json> {
+  readonly model: 'snapshot';
+  readonly name: TypeName;
+  readonly version: number;
+  /** Store boundary. Bad items drop; null rejects the file and the last good copy stands. */
+  parseContent(raw: unknown): S | null;
 }

@@ -2,12 +2,18 @@
 // which kills the Nth port call of a run, and the state snapshot a crash run is compared against.
 import { isDeviceId, type DeviceId, type ItemId } from '../../src/model.ts';
 import { createEngine, type Engine, type JoinPreview, type Policy, type SyncReport } from '../../src/engine.ts';
-import { noAsks, unbounded, type Asks, type Budget, type StoreConnection, type StoreFailure } from '../../src/ports.ts';
-import { gzipJson, parseManifest, type Manifest } from '../../src/store-format.ts';
+import { noAsks, unbounded, type Asks, type Budget, type ProfileChannels, type StoreConnection, type StoreFailure } from '../../src/ports.ts';
+import { open, openManifest, type Manifest, type StoreKey } from '../../src/store-format.ts';
+import { cipherFor, mintSyncKey, type SyncKey } from '../../src/sync-key.ts';
 import { MemoryCloud, type Attached, type FolderMode } from './memory-store.ts';
 import { deviceId, memoryLocal, memoryLogLocal, memorySink, type MemoryLocal, type MemoryLogLocal, type MemorySink } from './memory-local.ts';
 import { FakeBrowser, fakeBookmarks, itemIds, type Api, type FakeChannel } from './fake-bookmarks.ts';
 import { FakeHistory } from './fake-history.ts';
+import { FakeReadingList } from './fake-reading-list.ts';
+import { readingListChannel } from '../../src/chrome-reading-list.ts';
+import { profileChannels } from '../../src/chrome-profile.ts';
+import { FakeCompanion } from './fake-companion.ts';
+import type { ExtensionList } from '../../src/extensions.ts';
 import { ground } from './ground.ts';
 
 export const T0 = Date.UTC(2026, 9, 6, 12, 0, 0);
@@ -26,6 +32,9 @@ export class FakeClock {
 }
 
 export class CrashError extends Error {}
+
+/** The sync key every test device shares unless it asks for its own. */
+export const TEST_KEY: SyncKey = mintSyncKey();
 
 /**
  * The crash harness. Call `at` (1-based, counted across every wrapped port, or only calls to `method` when
@@ -82,6 +91,10 @@ export type DeviceOptions = {
   readonly live?: boolean;
   readonly policy?: Partial<Policy>;
   readonly crasher?: Crasher;
+  /** Defaults to TEST_KEY. A different key makes a device of another sync group in the same folder. */
+  readonly key?: SyncKey;
+  /** Full profile mode on from the start. Off by default. */
+  readonly profileOn?: boolean;
 };
 
 export class Device {
@@ -90,6 +103,15 @@ export class Device {
   readonly browser: FakeBrowser;
   readonly channel: FakeChannel;
   readonly history: FakeHistory;
+  readonly readingList = new FakeReadingList();
+  /** What this device's extensions source reads. Null: the management permission is not granted. */
+  extensionList: ExtensionList | null = null;
+  /** Helium's profile files as the companion shows them. */
+  readonly companion = new FakeCompanion();
+  /** The channels the engine gets while `profileOn`. Real ones over the fake companion; a test may swap one. */
+  profile: ProfileChannels = profileChannels(this.companion, 'Default').channels;
+  /** Full profile mode, as Turn on / Turn off in Advanced sets it. */
+  profileOn: boolean;
   readonly sink: MemorySink;
   readonly logLocal: MemoryLogLocal;
   readonly local: MemoryLocal;
@@ -97,9 +119,12 @@ export class Device {
   /** What `connect` answers. Tests flip it to simulate a lapsed grant. */
   access: 'ready' | StoreFailure = 'ready';
   readonly ids: (hint: string) => ItemId;
+  readonly key: SyncKey;
 
   constructor(name: string, index: number, cloud: MemoryCloud, clock: FakeClock, opts: DeviceOptions) {
     this.name = name;
+    this.key = opts.key ?? TEST_KEY;
+    this.profileOn = opts.profileOn ?? false;
     this.attached = cloud.attach(name, opts.live ?? false);
     this.browser = opts.browser ?? new FakeBrowser();
     this.ids = itemIds(name.toLowerCase());
@@ -113,13 +138,19 @@ export class Device {
     let minted = 0;
     this.local = memoryLocal(deviceClock, () => deviceId(index * 100 + ++minted));
     const store = wrap(this.attached.store);
+    const self = this;
     this.engine = createEngine({
       connect: async (): Promise<StoreConnection> =>
         this.access === 'ready' ? { access: 'ready', label: 'memory', store } : { access: 'failed', label: 'memory', why: this.access },
       local: wrap(this.local),
       bookmarks: wrap(this.channel),
+      readingList: wrap(readingListChannel(this.readingList)),
+      // Read once per cycle, so flipping `profileOn` between cycles is turning the mode on or off.
+      get profile() {
+        return self.profileOn ? self.profile : null;
+      },
       history: { source: wrap(this.history), sink: wrap(this.sink), local: wrap(this.logLocal) },
-      codec: gzipJson,
+      extensions: wrap({ read: async () => this.extensionList }),
       clock: deviceClock,
       platform: 'mac',
       appVersion: '0.0.0-test',
@@ -128,7 +159,7 @@ export class Device {
   }
 
   async setup(historyOn = true): Promise<void> {
-    await this.local.reset({ name: this.name, historyOn });
+    await this.local.reset({ name: this.name, historyOn, key: this.key });
   }
 
   get device(): DeviceId {
@@ -143,7 +174,7 @@ export class Device {
   }
 
   preview(): Promise<JoinPreview> {
-    return this.engine.sync({ preview: true });
+    return this.engine.sync({ preview: true, key: this.key });
   }
 
   /** Sync until the report says complete, rerunning after a crash the way the scheduler's resume alarm would. */
@@ -245,23 +276,39 @@ export async function syncedPair(world: World, opts: { readonly x?: DeviceOption
 
 type Snapshot = { readonly [k: string]: unknown };
 
+/** A store file's body, opened with TEST_KEY without a manifest to vouch for it. Throws unless it opens. */
+export async function openBody(data: Uint8Array, path: string): Promise<unknown> {
+  // Test-only: paths come from the memory cloud, which holds nothing but store keys.
+  const opened = await open(data, await cipherFor(TEST_KEY), path as StoreKey, null);
+  if (opened.kind !== 'ok') throw new Error(`${path} does not open: ${opened.kind}`);
+  return opened.body;
+}
+
+/** A manifest's content, opened with TEST_KEY. Null unless it opens and parses. */
+export async function readManifest(data: Uint8Array | undefined, device: DeviceId): Promise<Manifest | null> {
+  if (data === undefined) return null;
+  const opened = await openManifest(data, device, await cipherFor(TEST_KEY));
+  return opened.kind === 'ok' ? opened.manifest : null;
+}
+
 /** Decoded cloud content with the fields that legitimately differ between runs (seq, stamps of writing, hashes) removed. */
 async function cloudSnapshot(cloud: MemoryCloud): Promise<Snapshot> {
   const out: { [k: string]: unknown } = {};
+  const cipher = await cipherFor(TEST_KEY);
   for (const [path, file] of [...cloud.files].sort(([a], [b]) => (a < b ? -1 : 1))) {
     if (path.endsWith('manifest.json')) {
       const device = path.split('/')[1] ?? '';
-      const manifest: Manifest | null = isDeviceId(device) ? parseManifest(file.data, device) : null;
-      out[path] = manifest === null ? 'unparseable' : { name: manifest.name, files: [...manifest.files.keys()].sort() };
+      const opened = isDeviceId(device) ? await openManifest(file.data, device, cipher) : null;
+      out[path] = opened?.kind === 'ok' ? { name: opened.manifest.name, files: [...opened.manifest.files.keys()].sort() } : 'unparseable';
       continue;
     }
-    const newline = file.data.indexOf(0x0a);
-    const decoded = await gzipJson.decode(file.data.subarray(newline + 1));
-    if (!decoded.ok) {
-      out[path] = `undecodable: ${decoded.detail}`;
+    let body: unknown;
+    try {
+      body = await openBody(file.data, path);
+    } catch (error) {
+      out[path] = `undecodable: ${String(error)}`;
       continue;
     }
-    const body = decoded.body;
     if (typeof body === 'object' && body !== null && 'seq' in body && 'writtenAt' in body) {
       const { seq: _seq, writtenAt: _writtenAt, ...rest } = body;
       out[path] = rest;
