@@ -142,7 +142,13 @@ function mintDeviceId(): DeviceId {
 
 export function indexedLocal(): LocalState {
   return {
-    load: () => transact(['kv'], 'readonly', async (tx) => (await kv.get(tx, 'device')) ?? null),
+    load: () =>
+      transact(['kv'], 'readonly', async (tx) => {
+        const stored = await kv.get(tx, 'device');
+        // A record saved before the sync key existed (format 1, plaintext store) cannot sync and its key cannot be
+        // recovered: treat the device as not set up, so the user runs setup again instead of every cycle throwing.
+        return stored !== undefined && typeof stored.key === 'string' ? stored : null;
+      }),
     save: (next) =>
       transact(['kv'], 'readwrite', async (tx) => {
         await kv.put(tx, 'device', next);
