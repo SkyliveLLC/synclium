@@ -11,17 +11,14 @@
 // the user clicks Allow access in app.html#allow. That requestPermission prompt offers "Allow on every visit",
 // which P7 saw hold across later restarts; the picker's own prompt does not, so setup never pre-requests.
 //
-// Two handle slots, one writer each (local.ts). The page writes `candidate` when the user picks a folder; the
-// worker promotes it to `current` on Start, under the cycle lock. Picking a folder and backing out changes nothing.
-import { StoreError, type Fetched, type ProbeResult, type Store, type StoreConnection, type StoreFailure, type StoreStatus } from './ports.ts';
-import { DEVICES_PREFIX, type StoreKey } from './store-format.ts';
-import { handles, type HandleSlot } from './local.ts';
-import type { StoreBackend } from './background.ts';
+// The picked handle goes into local.ts's `candidate` store slot; the worker promotes it to `current` on Start
+// (stores.ts). Picking a folder and backing out changes nothing.
+import { StoreError, statusOf, type Fetched, type ProbeResult, type Store, type StoreConnection, type StoreFailure, type StoreStatus } from './ports.ts';
+import { DEVICES_PREFIX, STORE_NAME, type StoreKey } from './store-format.ts';
+import { slots } from './local.ts';
+import type { Chosen } from './stores.ts';
 
-/** The folder setup creates when the picked one is not already a store. */
-export const STORE_NAME = 'Helium Sync';
 const DEVICES = DEVICES_PREFIX.slice(0, -1);
-const PROBE = '.helium-sync-probe';
 const READWRITE = { mode: 'readwrite' } as const;
 
 /**
@@ -172,12 +169,14 @@ export function folderStore(root: Dir): Store {
         }
       }),
     async probe(): Promise<ProbeResult> {
+      // A name of its own: the folder may be shared with another device probing at the same moment.
+      const probe = `.helium-sync-probe-${crypto.randomUUID()}`;
       try {
         const bytes = crypto.getRandomValues(new Uint8Array(16));
-        const file = await root.getFileHandle(PROBE, { create: true });
+        const file = await root.getFileHandle(probe, { create: true });
         await writeAll(file, bytes);
         const back = await bytesOf(file);
-        await root.removeEntry(PROBE);
+        await root.removeEntry(probe);
         const same = back.length === bytes.length && back.every((b, i) => b === bytes[i]);
         return same ? { kind: 'ok' } : { kind: 'failed', why: { kind: 'rejected', detail: 'the probe file read back different bytes' } };
       } catch (error) {
@@ -199,8 +198,6 @@ export async function connectRoot(root: Dir | undefined): Promise<StoreConnectio
     return { access: 'failed', label, why: failureFrom(error) };
   }
 }
-
-const statusOf = (conn: StoreConnection): StoreStatus => (conn.access === 'ready' ? { access: 'ready', label: conn.label } : conn);
 
 /** Inside a click. Shows Chromium's re-grant prompt when the grant lapsed; a live grant answers without one. */
 export async function allowRoot(root: Dir | undefined): Promise<StoreStatus> {
@@ -232,17 +229,7 @@ export async function storeRootIn<D extends Dir>(picked: D): Promise<D> {
   return created;
 }
 
-// ---------- Shells over IndexedDB and the picker ----------
-
-export const connectFolder = async (slot: HandleSlot): Promise<StoreConnection> => connectRoot(await handles.get(slot));
-
-/** What the worker runs on. */
-export const folderBackend: StoreBackend = { connect: connectFolder, promote: handles.promote };
-
-export type Chosen =
-  | { readonly kind: 'cancelled' }
-  /** Saved as `candidate` only when the probe passed, so a folder that cannot be written never reaches Start. */
-  | { readonly kind: 'chosen'; readonly label: string; readonly probe: ProbeResult };
+// ---------- The picker ----------
 
 /** App page, inside a click: the native picker, then Chromium's "Allow this site to edit files?" prompt. */
 export async function chooseFolder(): Promise<Chosen> {
@@ -260,9 +247,6 @@ export async function chooseFolder(): Promise<Chosen> {
     return { kind: 'chosen', label: picked.name, probe: { kind: 'failed', why: failureFrom(error) } };
   }
   const probe = await folderStore(root).probe();
-  if (probe.kind === 'ok') await handles.putCandidate(root);
+  if (probe.kind === 'ok') await slots.putCandidate({ kind: 'folder', handle: root });
   return { kind: 'chosen', label: root.name, probe };
 }
-
-/** App page, inside a click, for app.html#allow. */
-export const allowFolder = async (): Promise<StoreStatus> => allowRoot(await handles.get('current'));

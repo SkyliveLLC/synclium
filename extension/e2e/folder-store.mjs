@@ -90,8 +90,8 @@ console.log('swap file (OPFS):', JSON.stringify(swap));
 
 // The release worker syncs into the OPFS store: the page saves it as the candidate, Start promotes it.
 await setup.eval(`(async () => {
-  const { handles } = await import('/local.js');
-  await handles.putCandidate(await (await navigator.storage.getDirectory()).getDirectoryHandle('Helium Sync'));
+  const { slots } = await import('/local.js');
+  await slots.putCandidate({ kind: 'folder', handle: await (await navigator.storage.getDirectory()).getDirectoryHandle('Helium Sync') });
   return true;
 })()`);
 await setup.eval(`location.reload(); true`);
@@ -156,19 +156,23 @@ check(true, '[Allow access] opens app.html#allow', allowTarget.url);
 const allow = await browser.attach(allowTarget.targetId, 'app-allow');
 await browser.call('Page.enable', {}, allow.sessionId);
 await browser.call('Emulation.setDeviceMetricsOverride', { width: 900, height: 600, deviceScaleFactor: 1, mobile: false }, allow.sessionId);
-await sleep(800);
+await until(() => allow.eval(`document.getElementById('allow-button')?.disabled === false`), 'allow page ready');
 console.log('allow page:', JSON.stringify(await allow.eval(`document.getElementById('allow').innerText`)));
 await allow.shot(`${SHOTS}/7-allow.png`);
 
 // Allow against a real handle: put OPFS back as current, click Allow access.
 await allow.eval(`(async () => {
-  const { handles } = await import('/local.js');
+  const { slots } = await import('/local.js');
   const root = await (await navigator.storage.getDirectory()).getDirectoryHandle('Helium Sync', { create: true });
   await root.getDirectoryHandle('devices', { create: true });
-  await handles.putCandidate(root);
-  await handles.promote();
+  await slots.putCandidate({ kind: 'folder', handle: root });
+  await slots.promote();
   return true;
 })()`);
+// #allow reads the current store on entry, so the click's first await is the prompt: enter it again.
+await allow.eval(`location.hash = '#status'; true`);
+await allow.eval(`new Promise((done) => { addEventListener('hashchange', () => done(true), { once: true }); location.hash = '#allow'; })`);
+await until(() => allow.eval(`document.getElementById('allow-button').disabled === false`), 'allow re-entered');
 await allow.eval(`document.getElementById('allow-button').click(); true`);
 await until(() => allow.eval(`location.hash === '#status'`), 'allow moves to status');
 const recovered = await until(async () => {

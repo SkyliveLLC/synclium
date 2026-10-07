@@ -88,11 +88,12 @@ engine.ts            sync + forget, SyncReport, JoinPreview, fetch and publish p
   history.ts         Visit as a LogType
   store-format.ts    layout, manifest, envelope, codec, StateFile, LogShard
   ports.ts           Store, StoreConnection, StoreFailure, channels, LocalState, LogLocal, Asks, Budget
-folder-store.ts      File System Access: choose, connect, allow, promote, folderStore
-webdav-store.ts      the documented fallback Store, not wired in v1
+stores.ts            the saved StoreChoice -> connect, allow; the release StoreBackend
+folder-store.ts      File System Access: choose, connect, allow, folderStore
+webdav-store.ts      WebDAV over fetch: choose, connect, allow, webdavStore
 chrome-bookmarks.ts  RegisterChannel<Bookmark>, chrome id map, planApply
 chrome-history.ts    LogSource<Visit> over chrome.history, read-only
-local.ts             IndexedDB schema, LocalState, LogLocal, history index, intents, handles
+local.ts             IndexedDB schema, LocalState, LogLocal, history index, intents, store slots
 ui.ts                Protocol, ask, StatusView, actionFor, badgeFor
 companion/           opt-in file mode: link.ts (extension side), protocol.ts, host.ts
 ```
@@ -281,6 +282,19 @@ Open from unit 3:
 - Setup's result line takes its bookmark count from the preview and can read "Published 0 bookmarks".
 
 **End-to-end on 2026-10-06** (computer use, two Helium Scratch profiles, one iCloud Drive folder): device A set up and published 2 bookmarks. Device B previewed "Joining Device A. 0 bookmarks already match, 2 will be added here, 1 will be shared." and ended with all 3, no duplicates. B's new bookmark reached A after A's restart, the one-time "Allow on every visit" re-grant, and a cycle. A's next restart needed no prompt. Not proven: a cycle on browser startup before any extension page opens, because opening the popup itself requests a sync.
+
+Unit 4 (`webdav-store.ts`, `stores.ts`) adds WebDAV as a second choice at setup, beside the folder. Setup saves a `StoreChoice` (a folder handle, or a URL with credentials) in the `store:candidate` slot, and `stores.ts` is the one switch over it, so the engine, the format, and the popup states are unchanged. Verified: typecheck exits 0, 91 of 91 tests pass against an in-memory server (`test/support/fake-dav.ts`), the Store and a two-device engine run pass against wsgidav, and a two-profile run in scratch Helium passes 10 of 10 checks (`extension/e2e/webdav.mjs`). Accepted deviations:
+
+- **The store goes in a `Helium Sync/` collection under the typed address**, found or created by the folder rule, so every device types the same address.
+- **Basic auth with `credentials: 'omit'`, over https only** (or http to loopback). The host permission is optional and narrowed to the server's origin at Connect. The password sits in IndexedDB in plaintext, and setup says so.
+- **A version is the ETag**, sent back as If-None-Match. A server without ETags gets a content hash, so every get downloads but unchanged still holds.
+- **A 404 below a missing root is `missing`**, never an empty store, as for a folder. Offline and 5xx are `unreachable`; 401, 403, and 507 are `rejected`.
+- **Advanced's Change opens setup**, which offers both kinds. Existing installs read the old `folder:*` slots as not set up and choose again (pre-release, no migration).
+
+Open from unit 4:
+
+- A server whose ETag is mtime-in-seconds plus size (wsgidav, Apache) misses a same-size rewrite within one second, like a folder's lastModified.
+- The Connect click's permission prompt, and Allow access after a revoked grant, are untested in the browser: CDP cannot click the bubble, so the e2e preinstalls the grant.
 
 Open from unit 1:
 

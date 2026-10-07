@@ -5,7 +5,8 @@
 //
 // Object stores, and their single writer (per DESIGN.md "Local state has one writer per record"):
 //   kv          'device' DeviceLocal (worker)  'intent' Intent (worker)
-//               'folder:candidate' handle (app page)  'folder:current' handle (worker, on Start)
+//               'store:candidate' StoreChoice (app page)  'store:current' StoreChoice (worker, on Start)
+//               'folder:candidate' 'folder:current' pre-WebDAV handles: read as a fallback, deleted with the candidate, never written
 //   idmap       { chrome, item } keyed by chrome id, unique index on item (worker)
 //   ownDays     DayKey -> OwnDay (worker)
 //   ownEvents   DayKey -> Visit[], apart from ownDays so listing days never loads megabytes (worker)
@@ -21,15 +22,22 @@ import { joinCursor } from './log-cycle.ts';
 import { parseKey, type StoreKey } from './store-format.ts';
 import { ASK_OF, type Intent, type IntentStore, type Trigger } from './scheduler.ts';
 import type { ChromeId } from './chrome-bookmarks.ts';
+import type { WebdavConfig } from './webdav-store.ts';
 
-/** `candidate` is what setup picked; `current` is what sync uses. Start promotes one to the other. */
-export type HandleSlot = 'current' | 'candidate';
+/** `candidate` is what setup chose; `current` is what sync uses. Start promotes one to the other. */
+export type StoreSlot = 'current' | 'candidate';
+
+/** Where a device syncs: the folder it picked, or a WebDAV server with its credentials. */
+export type StoreChoice = { readonly kind: 'folder'; readonly handle: FileSystemDirectoryHandle } | { readonly kind: 'webdav'; readonly config: WebdavConfig };
 
 export type RemoteVisit = Visit & { readonly device: DeviceId; readonly deviceName: string };
 
 type Kv = {
   readonly device: DeviceLocal;
   readonly intent: Intent;
+  readonly 'store:candidate': StoreChoice;
+  readonly 'store:current': StoreChoice;
+  /** Before WebDAV, slots held a bare folder handle. Read only, as a fallback in `slots.get`. */
   readonly 'folder:candidate': FileSystemDirectoryHandle;
   readonly 'folder:current': FileSystemDirectoryHandle;
 };
@@ -145,7 +153,7 @@ export function indexedLocal(): LocalState {
         await kv.put(tx, 'device', fresh);
         return fresh;
       }),
-    // Keeps the id map (a rejoin's own earlier deletes hold), the intent counters, and the folder handles.
+    // Keeps the id map (a rejoin's own earlier deletes hold), the intent counters, and the store choices.
     clear: () =>
       transact(SYNC_STATE, 'readwrite', async (tx) => {
         await done(tx.objectStore('kv').delete('device'));
@@ -285,18 +293,31 @@ export function historyIndex(): LogSink<Visit> & {
   };
 }
 
-export const handles = {
-  get: (slot: HandleSlot): Promise<FileSystemDirectoryHandle | undefined> => transact(['kv'], 'readonly', (tx) => kv.get(tx, `folder:${slot}`)),
+export const slots = {
+  /** A device set up before WebDAV existed keeps its folder: the legacy handle reads as a folder choice. */
+  get: (slot: StoreSlot): Promise<StoreChoice | undefined> =>
+    transact(['kv'], 'readonly', async (tx) => {
+      const choice = await kv.get(tx, `store:${slot}`);
+      if (choice !== undefined) return choice;
+      const handle = await kv.get(tx, `folder:${slot}`);
+      return handle === undefined ? undefined : { kind: 'folder', handle };
+    }),
   /** App page only: the candidate slot is the one record a page writes. */
-  putCandidate: (handle: FileSystemDirectoryHandle): Promise<void> =>
+  putCandidate: (choice: StoreChoice): Promise<void> =>
     transact(['kv'], 'readwrite', async (tx) => {
-      await kv.put(tx, 'folder:candidate', handle);
+      await kv.put(tx, 'store:candidate', choice);
+    }),
+  /** App page only, when the user asks to change stores, so setup never offers the current one as new. */
+  clearCandidate: (): Promise<void> =>
+    transact(['kv'], 'readwrite', async (tx) => {
+      await done(tx.objectStore('kv').delete('store:candidate'));
+      await done(tx.objectStore('kv').delete('folder:candidate'));
     }),
   /** Worker, under the cycle lock, on Start. A missing candidate leaves `current` as it was. */
   promote: (): Promise<void> =>
     transact(['kv'], 'readwrite', async (tx) => {
-      const candidate = await kv.get(tx, 'folder:candidate');
-      if (candidate !== undefined) await kv.put(tx, 'folder:current', candidate);
+      const candidate = await kv.get(tx, 'store:candidate');
+      if (candidate !== undefined) await kv.put(tx, 'store:current', candidate);
     }),
 };
 

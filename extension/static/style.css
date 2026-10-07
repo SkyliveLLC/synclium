@@ -52,7 +52,7 @@ button.quiet { border-color: transparent; background: transparent; color: var(--
 button.link-button { height: auto; padding: 0; border: 0; background: none; color: var(--accent); font-size: 13px; margin-top: 6px; }
 button.link-button:hover:not(:disabled) { text-decoration: underline; }
 
-input[type=text], input[type=search] {
+input[type=text], input[type=search], input[type=url], input[type=password] {
   font: inherit; width: 100%; padding: 8px 12px; border-radius: 8px;
   border: 1px solid var(--line); background: var(--surface); color: var(--fg); margin-bottom: 8px;
 }
@@ -194,6 +194,9 @@ kbd { font: 12px ui-monospace, monospace; border: 1px solid var(--line); border-
 .steps h3 { margin: 0 0 4px; }
 .steps button { margin-top: 4px; }
 .preview { background: var(--bg); border-radius: 8px; padding: 8px 12px; }
+.steps details { margin-top: 12px; }
+.steps summary { cursor: pointer; color: var(--accent); font-size: 13px; }
+.steps details form { margin: 12px 0 4px; }
 
 /* ---------- Settings ---------- */
 

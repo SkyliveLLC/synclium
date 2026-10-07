@@ -35,7 +35,7 @@ import { syncRegisters } from './register-cycle.ts';
 import { joinCursor, syncLog } from './log-cycle.ts';
 
 export type EngineDeps = {
-  /** folder-store.ts `connectFolder`. Called once at the start of every cycle. */
+  /** The chosen store (stores.ts `connectChoice`). Called once at the start of every cycle. */
   readonly connect: () => Promise<StoreConnection>;
   readonly local: LocalState;
   readonly bookmarks: RegisterChannel<Bookmark>;

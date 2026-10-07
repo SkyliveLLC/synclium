@@ -29,10 +29,20 @@
       <h2>Set up this device</h2>
       <ol class="steps">
         <li>
-          <h3>Choose a folder you already sync</h3>
-          <p class="note">iCloud Drive, Dropbox, or Syncthing. Each device picks the same folder.</p>
+          <h3>Choose where to sync</h3>
+          <p class="note">A folder you already sync with iCloud Drive, Dropbox, or Syncthing. Each device picks the same folder.</p>
           <button id="choose">Choose folder</button>
           <p id="choose-note" class="note">On another device, pick the same folder, or the Helium Sync folder inside it.</p>
+          <details id="webdav">
+            <summary>Or use a WebDAV server: Nextcloud, ownCloud, Synology, Fastmail, Koofr</summary>
+            <form id="webdav-form">
+              <input id="dav-url" type="url" required placeholder="https://cloud.example.com/remote.php/dav/files/you/" autocomplete="url" aria-label="WebDAV address">
+              <input id="dav-user" type="text" required placeholder="Username" autocomplete="username" aria-label="Username">
+              <input id="dav-password" type="password" required placeholder="Password (an app password if your server has them)" autocomplete="current-password" aria-label="Password">
+              <button id="dav-connect" type="submit">Connect</button>
+            </form>
+            <p class="note">Each device enters the same address. Synclium keeps its files in a Helium Sync folder there. The password is stored unencrypted in this browser.</p>
+          </details>
           <p id="store-label" class="note" hidden></p>
         </li>
         <li>
@@ -49,8 +59,8 @@
 
     <section id="allow" hidden>
       <h2>Allow access</h2>
-      <p>Helium asks again for access to the sync folder after it restarts. Until you allow it, sync is paused. Edits you make meanwhile are kept and sync once access returns.</p>
-      <p>In Helium's prompt, choose <strong>Allow on every visit</strong> so Synclium never asks again.</p>
+      <p>Synclium can't use your sync folder or server until you allow it again. Helium asks again for a folder after it restarts. Edits you make meanwhile are kept and sync once access returns.</p>
+      <p>For a folder, choose <strong>Allow on every visit</strong> in Helium's prompt so Synclium never asks again.</p>
       <button id="allow-button" class="primary">Allow access</button>
       <p id="allow-result" class="note" hidden></p>
     </section>
@@ -67,7 +77,7 @@
         </div>
       </div>
 
-      <div id="map" class="map" role="group" aria-label="Devices syncing through the folder">
+      <div id="map" class="map" role="group" aria-label="Devices syncing through the store">
         <div id="map-self" class="node self"></div>
         <span class="link" aria-hidden="true"></span>
         <div id="map-folder" class="node folder"></div>
@@ -87,7 +97,7 @@
           <dt>Folder</dt>
           <dd>
             <strong id="fact-folder"></strong><span id="fact-folder-detail"></span>
-            <button id="status-check" class="link-button">Check folder</button>
+            <button id="status-check" class="link-button">Check access</button>
           </dd>
         </div>
       </dl>
@@ -121,12 +131,11 @@
       </div>
       <div class="setting">
         <div>
-          <h3>Sync folder</h3>
+          <h3>Sync folder or server</h3>
           <p id="adv-folder" class="note"></p>
-          <p class="note">Picking another folder joins it as a new device. Bookmarks that already match are not duplicated.</p>
-          <p id="change-result" class="note" hidden></p>
+          <p class="note">Choosing another folder or WebDAV server joins it as a new device. Bookmarks that already match are not duplicated.</p>
         </div>
-        <button id="change-folder">Change folder</button>
+        <button id="change-folder">Change</button>
       </div>
       <div class="setting">
         <div>

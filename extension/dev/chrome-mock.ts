@@ -49,6 +49,7 @@ const SCENARIOS = {
   }),
   'needs-permission': shown({ ...healthy, store: { access: 'failed', label: 'Helium Sync', why: { kind: 'needs-permission' } } }),
   'folder-missing': shown({ ...healthy, store: { access: 'failed', label: 'Helium Sync', why: { kind: 'missing' } } }),
+  'server-offline': shown({ ...healthy, store: { access: 'failed', label: 'Helium Sync on cloud.example.com', why: { kind: 'unreachable', detail: 'server error 503' } } }),
   review: shown({
     ...healthy,
     bookmarks: { kind: 'blocked', why: { kind: 'mass-delete', removed: { added: 0, updated: 0, removed: 212, sample: ['Recipes', 'Hacker News', 'MDN Web Docs'] }, of: 340 } },

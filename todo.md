@@ -54,3 +54,5 @@
 - [x] E2E two-device run passed (setup, join preview, no duplicates, From B crossed, allow-on-every-visit persisted)
 - [ ] Popup paused state: make Allow access the primary button
 - [ ] Unattended sync after restart without opening popup: unverified in e2e (popup open triggers sync-now)
+- [x] Unit 4 WebDAV store: typecheck 0, 95/95, wsgidav store + engine run, e2e/webdav.mjs 11/11 and e2e/folder-store.mjs 19/19 in isolated scratch Helium
+- [ ] WebDAV permission bubble (Connect, Allow access after revoke): needs a human click

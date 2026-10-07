@@ -3,22 +3,22 @@
 // (worker.ts calls startWorker at top level), so Chromium can wake the worker for any of them. Nothing here
 // holds state across wakes: each cycle rebuilds the engine from IndexedDB.
 //
-// Which store sync talks to is the one thing the entry chooses: folder-store.ts in the release entry (worker.ts),
-// dev-store.ts in the dev entry (worker-dev.ts).
+// Which store backend sync talks to is the one thing the entry chooses: stores.ts in the release entry
+// (worker.ts), which serves the folder or WebDAV server setup chose; dev-store.ts in the dev entry (worker-dev.ts).
 import { createEngine, type Engine } from './engine.ts';
 import { chromeBookmarks } from './chrome-bookmarks.ts';
 import { chromeHistorySource } from './chrome-history.ts';
 import { isSyncableUrl } from './history.ts';
-import { historyIndex, historyLocal, indexedLocal, intents, type HandleSlot } from './local.ts';
+import { historyIndex, historyLocal, indexedLocal, intents, type StoreSlot } from './local.ts';
 import { gzipJson, parsePlatform, type Platform } from './store-format.ts';
 import { ALARM_MIN_MS, POLL_MINUTES, createScheduler, withCycleLock, type Locks, type Timers, type Trigger, type Wake } from './scheduler.ts';
-import type { StoreConnection } from './ports.ts';
+import { statusOf, type StoreConnection } from './ports.ts';
 import { DEVICE_NAMES, badgeFor, readShown, storedShown, viewOf, type Shown, type StartResult, type UiMessage, type UiReply, type Wire } from './ui.ts';
 
-/** Where sync stores its files. folder-store.ts's `folderBackend` in release. */
+/** Where sync stores its files. stores.ts's `releaseBackend` in release. */
 export type StoreBackend = {
   /** Never prompts. Called at the start of every cycle, so lapsed access shows up as a paused cycle. */
-  connect(slot: HandleSlot): Promise<StoreConnection>;
+  connect(slot: StoreSlot): Promise<StoreConnection>;
   /** Worker, under the cycle lock, on Start: `candidate` becomes `current`. */
   promote(): Promise<void>;
 };
@@ -64,7 +64,7 @@ export function startWorker(backend: StoreBackend): void {
     },
   };
 
-  async function engineFor(slot: HandleSlot): Promise<Engine> {
+  async function engineFor(slot: StoreSlot): Promise<Engine> {
     return createEngine({
       connect: () => backend.connect(slot),
       local,
@@ -161,9 +161,9 @@ export function startWorker(backend: StoreBackend): void {
           const probe = await conn.store.probe();
           if (probe.kind === 'failed') return { kind: 'not-ready', store: { access: 'failed', label: conn.label, why: probe.why } };
           await backend.promote();
-          // A device that was already set up (Change folder, or a moved folder picked again) first removes its
-          // old identity's files from the folder it joins, so it never syncs with itself as a peer, and drops
-          // the old folder's sync state. Files it never wrote there are already absent, which is fine.
+          // A device that was already set up (Change, or a moved folder picked again) first removes its old
+          // identity's files from the store it joins, so it never syncs with itself as a peer, and drops
+          // the old store's sync state. Files it never wrote there are already absent, which is fine.
           await (await engineFor('current')).forget();
           await local.reset({ name, historyOn: message.historyOn });
           return { kind: 'started' };
@@ -185,7 +185,7 @@ export function startWorker(backend: StoreBackend): void {
         const conn = await backend.connect('current');
         if (conn.access !== 'ready') return conn;
         const probe = await conn.store.probe();
-        return probe.kind === 'ok' ? { access: 'ready', label: conn.label } : { access: 'failed', label: conn.label, why: probe.why };
+        return probe.kind === 'ok' ? statusOf(conn) : { access: 'failed', label: conn.label, why: probe.why };
       }
       case 'search-history':
         return index.search(message.query, 200);

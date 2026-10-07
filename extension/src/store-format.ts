@@ -37,6 +37,8 @@ export type StoreKey = Brand<string, 'StoreKey'>;
 export type RelName = Brand<string, 'RelName'>;
 
 export const DEVICES_PREFIX = 'devices/';
+/** The folder setup creates inside the chosen folder or WebDAV collection when it is not already a store. */
+export const STORE_NAME = 'Helium Sync';
 const MANIFEST_NAME = 'manifest.json';
 const EXT = '.hsync';
 const TYPE_NAME = '[a-z][a-z0-9-]*';

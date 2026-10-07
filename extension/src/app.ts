@@ -1,12 +1,12 @@
 // app.html, the options page. Routes by hash, so the popup and the worker can deep-link:
-//   #setup     store, device name, history choice, join preview, Start
-//   #allow     re-grant folder access after the grant lapsed (Chromium asks again after a restart)
-//   #status    the dashboard: status, a map of devices around the folder, bookmarks/history/folder facts, problems
+//   #setup     folder or WebDAV server, device name, history choice, join preview, Start
+//   #allow     re-grant access after it lapsed (a folder after a restart, a revoked server permission)
+//   #status    the dashboard: status, a map of devices around the store, bookmarks/history/store facts, problems
 //   #review    a blocked mass delete and [Apply these deletions]
 //   #history   search over peers' visits, grouped by device and day
-//   #advanced  settings: history toggle, change folder, forget this device
-// The folder picker and the permission prompt need the click's gesture, so chooseFolder and allowFolder run
-// first thing in their click handlers.
+//   #advanced  settings: history toggle, change folder or server, forget this device
+// The folder picker and the permission prompts need the click's gesture, so chooseFolder, chooseWebdav, and
+// allowStore are called synchronously in their handlers.
 // Peer data (titles, urls, device names) only ever reaches the DOM as text or as an http(s) href.
 import type { JoinPreview } from './engine.ts';
 import {
@@ -30,7 +30,10 @@ import {
   type Shown,
 } from './ui.ts';
 import { parsePlatform } from './store-format.ts';
-import { allowFolder, chooseFolder } from './folder-store.ts';
+import { chooseFolder } from './folder-store.ts';
+import { chooseWebdav, parseDavUrl } from './webdav-store.ts';
+import { allowStore, type Chosen } from './stores.ts';
+import { slots, type StoreChoice } from './local.ts';
 import type { StoreFailure } from './ports.ts';
 
 const SECTIONS = ['setup', 'allow', 'status', 'review', 'history', 'advanced'] as const;
@@ -97,24 +100,52 @@ async function enterSetup(): Promise<void> {
   };
 }
 
-/** Picker, prompt, and probe. `ok` means the folder is now the candidate; on `failed`, `note` says why. */
-async function choose(note: HTMLParagraphElement): Promise<'ok' | 'cancelled' | 'failed'> {
-  try {
-    const chosen = await chooseFolder();
-    if (chosen.kind === 'cancelled') return 'cancelled';
-    if (chosen.probe.kind === 'ok') return 'ok';
-    note.textContent = failureText(chosen.label, chosen.probe.why);
-  } catch (error) {
-    note.textContent = `Couldn't use that folder: ${messageOf(error)}`;
-  }
-  note.hidden = false;
-  return 'failed';
+function setupNote(text: string): void {
+  setup.preview.textContent = text;
+  setup.preview.hidden = false;
+  setup.start.disabled = true;
 }
 
-setup.choose.onclick = async () => {
-  const outcome = await choose(setup.preview);
-  if (outcome === 'ok') await enterSetup();
-  if (outcome === 'failed') setup.start.disabled = true;
+/**
+ * After the picker or the Connect click. A passed probe made the choice the candidate, so the preview refreshes;
+ * otherwise the note says why. `cancelled` is what to say when the user backed out, if anything.
+ */
+async function useChoice(choosing: Promise<Chosen>, what: string, cancelled = ''): Promise<void> {
+  // One choice at a time: a second click would race the first one's probe and candidate write.
+  setup.choose.disabled = true;
+  dav.connect.disabled = true;
+  try {
+    const chosen = await choosing;
+    if (chosen.kind === 'cancelled') {
+      if (cancelled !== '') setupNote(cancelled);
+    } else if (chosen.probe.kind === 'ok') {
+      await enterSetup();
+    } else {
+      setupNote(failureText(chosen.label, chosen.probe.why));
+    }
+  } catch (error) {
+    setupNote(`Couldn't use that ${what}: ${messageOf(error)}`);
+  } finally {
+    setup.choose.disabled = false;
+    dav.connect.disabled = false;
+  }
+}
+
+setup.choose.onclick = () => void useChoice(chooseFolder(), 'folder');
+
+const dav = {
+  form: byId('webdav-form', HTMLFormElement),
+  url: byId('dav-url', HTMLInputElement),
+  user: byId('dav-user', HTMLInputElement),
+  password: byId('dav-password', HTMLInputElement),
+  connect: byId('dav-connect', HTMLButtonElement),
+};
+dav.form.onsubmit = (event) => {
+  event.preventDefault();
+  const url = parseDavUrl(dav.url.value);
+  if (url === null) return setupNote('Enter the WebDAV address, starting with https://.');
+  const typed = { url, username: dav.user.value, password: dav.password.value };
+  void useChoice(chooseWebdav(typed), 'server', `Synclium needs your permission to reach ${new URL(url).host}.`);
 };
 
 function renderSetupResult(): void {
@@ -134,12 +165,21 @@ onShown.push(renderSetupResult);
 // ---------- Allow ----------
 
 const allow = { button: byId('allow-button', HTMLButtonElement), result: byId('allow-result', HTMLParagraphElement) };
+/** Read when #allow opens, so the click's first await is the permission prompt. */
+let allowChoice: StoreChoice | undefined;
+
+async function enterAllow(): Promise<void> {
+  allow.button.disabled = true;
+  allowChoice = await slots.get('current');
+  allow.button.disabled = false;
+}
 
 allow.button.onclick = async () => {
+  const allowing = allowStore(allowChoice);
   allow.button.disabled = true;
   allow.result.hidden = true;
   try {
-    const status = await allowFolder();
+    const status = await allowing;
     if (status.access === 'ready') {
       await ask({ kind: 'sync-now' });
       location.hash = '#status';
@@ -147,13 +187,13 @@ allow.button.onclick = async () => {
     }
     allow.result.replaceChildren(
       status.access === 'not-set-up'
-        ? 'No folder is set up yet. '
+        ? 'Nothing is set up yet. '
         : status.why.kind === 'needs-permission'
-          ? `Synclium still can't use ${status.label}. Click Allow access, then choose "Allow on every visit" in Helium's prompt.`
+          ? `Synclium still can't use ${status.label}. Click Allow access, then allow it in Helium's prompt.`
           : `${failureText(status.label, status.why)} `,
     );
     if (status.access === 'not-set-up' || status.why.kind === 'missing') {
-      const link = el('a', 'Choose the folder again');
+      const link = el('a', 'Choose it again in setup');
       link.href = '#setup';
       allow.result.append(link);
     }
@@ -263,7 +303,7 @@ status.check.onclick = async () => {
       ? 'Reachable and writable.'
       : result.access === 'failed'
         ? previewSentence({ kind: 'not-ready', store: result })
-        : 'No folder is set up.';
+        : 'Nothing is set up yet.';
 };
 
 // ---------- Review ----------
@@ -335,7 +375,6 @@ search.q.oninput = () => {
 const advanced = {
   history: byId('adv-history', HTMLInputElement),
   change: byId('change-folder', HTMLButtonElement),
-  changeResult: byId('change-result', HTMLParagraphElement),
   forget: byId('forget', HTMLButtonElement),
   deviceId: byId('device-id', HTMLParagraphElement),
   folder: byId('adv-folder', HTMLParagraphElement),
@@ -347,14 +386,15 @@ function renderAdvanced(): void {
   advanced.forget.disabled = report === null;
   if (report !== null) advanced.history.checked = report.history.kind !== 'off';
   advanced.deviceId.textContent = report === null ? 'This device is not set up.' : `${report.name}, device id ${report.device}`;
-  advanced.folder.textContent = report === null || report.store.access === 'not-set-up' ? 'No folder is set up.' : `Syncing through ${report.store.label}.`;
+  advanced.folder.textContent = report === null || report.store.access === 'not-set-up' ? 'Nothing is set up.' : `Syncing through ${report.store.label}.`;
 }
 onShown.push(renderAdvanced);
 advanced.history.onchange = () => void ask({ kind: 'set-history', on: advanced.history.checked });
-// Start, on the setup screen this opens, joins the new folder as a new device (background.ts `start`).
+// Setup offers both kinds of store. Its Start joins the new one as a new device (background.ts `start`). The
+// candidate still holds the store in use, so it is cleared first: Start waits for a new choice.
 advanced.change.onclick = async () => {
-  advanced.changeResult.hidden = true;
-  if ((await choose(advanced.changeResult)) === 'ok') location.hash = '#setup';
+  await slots.clearCandidate();
+  location.hash = '#setup';
 };
 advanced.forget.onclick = async () => {
   if (!confirm("Forget this device? Its files leave the sync folder. Bookmarks and history in Helium stay.")) return;
@@ -364,7 +404,7 @@ advanced.forget.onclick = async () => {
 
 // ---------- Routing ----------
 
-const enter: { readonly [S in Section]?: () => Promise<void> } = { setup: enterSetup, history: runSearch };
+const enter: { readonly [S in Section]?: () => Promise<void> } = { setup: enterSetup, allow: enterAllow, history: runSearch };
 
 function route(): void {
   const hash = location.hash.slice(1);

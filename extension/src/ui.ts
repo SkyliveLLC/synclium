@@ -2,9 +2,9 @@
 // so the view model runs in a Node test. The DOM lives in app.ts and popup.ts.
 //   popup.html  status at a glance, [Sync now], and the one button the status calls for
 //   app.html    (options page, a tab) setup, status detail, history search, review, advanced
-// Anything that needs a user gesture for File System Access happens in app.html, never the popup: the native
-// picker and Chromium's permission bubble take focus, the popup closes, and a request tied to a closed frame
-// is cancelled.
+// Anything that needs a user gesture (the folder picker, a folder re-grant, a WebDAV host permission) happens
+// in app.html, never the popup: the picker and Chromium's permission bubbles take focus, the popup closes, and a
+// request tied to a closed frame is cancelled.
 //
 // Status flows one way. The worker writes `Shown` to chrome.storage.local; pages render it and re-render on
 // storage.onChanged. Pages never run the engine and never write its state; they ask.
@@ -79,7 +79,7 @@ export function storedShown(shown: Shown): { readonly [SHOWN_KEY]: Stored } {
 
 /**
  * What the popup shows. One variant per thing the user can act on. The same variants cover every P7 rung and
- * the WebDAV fallback; only which failure appears, and how often, changes.
+ * WebDAV; only which failure appears, and how often, changes.
  */
 export type StatusView =
   | { readonly kind: 'setup' }
@@ -333,7 +333,7 @@ export function folderFact(store: StoreStatus): Fact {
 export function previewSentence(preview: JoinPreview): string {
   switch (preview.kind) {
     case 'not-ready':
-      return preview.store.access === 'failed' ? failureSentence(preview.store.label, preview.store.why) : 'Choose a folder first.';
+      return preview.store.access === 'failed' ? failureSentence(preview.store.label, preview.store.why) : 'Choose a folder or a WebDAV server first.';
     case 'first-device':
       return `New sync folder. ${plural(preview.bookmarks, 'bookmark')} will be shared.`;
     case 'joining': {
