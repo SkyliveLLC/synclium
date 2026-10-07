@@ -1,5 +1,5 @@
-// popup.html: one sentence of status, [Sync now], and the one button the status calls for.
-import { SHOWN_KEY, ask, primaryAction, readShown, shownFrom, statusSentence, viewOf, type Shown } from './ui.ts';
+// popup.html: the status dot and one sentence of status, [Sync now], and the one button the status calls for.
+import { SHOWN_KEY, ask, primaryAction, readShown, shownFrom, statusSentence, toneOf, viewOf, type Shown } from './ui.ts';
 
 function byId<E extends HTMLElement>(id: string, type: { new (): E }): E {
   const found = document.getElementById(id);
@@ -7,7 +7,8 @@ function byId<E extends HTMLElement>(id: string, type: { new (): E }): E {
   return found;
 }
 
-const status = byId('status', HTMLParagraphElement);
+const main = byId('main', HTMLElement);
+const status = byId('status', HTMLSpanElement);
 const sync = byId('sync', HTMLButtonElement);
 const action = byId('action', HTMLButtonElement);
 const open = byId('open', HTMLButtonElement);
@@ -16,6 +17,7 @@ let shown: Shown = await readShown();
 
 function render(): void {
   const view = viewOf(shown);
+  main.dataset.tone = toneOf(view);
   status.textContent = statusSentence(view, Date.now());
   sync.hidden = view.kind === 'setup';
   const next = primaryAction(view);

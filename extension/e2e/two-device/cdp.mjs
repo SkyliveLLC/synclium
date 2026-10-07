@@ -20,7 +20,7 @@ async function bookmarksTarget() {
 }
 async function extWorker() {
   const t = (await list()).find((x) => x.type === 'service_worker' && x.url.startsWith('chrome-extension://') && x.url.endsWith('/worker.js'));
-  if (!t) throw new Error('Helium Sync worker not found (installed? asleep? open its popup or app page to wake it)');
+  if (!t) throw new Error('Synclium worker not found (installed? asleep? open its popup or app page to wake it)');
   return t;
 }
 const flat = `chrome.bookmarks.getTree().then(t => { const out = []; const walk = (n, path) => { for (const c of n.children || []) { if (c.url) out.push(path + ' > ' + c.title + ' | ' + c.url); else walk(c, path + ' > ' + c.title); } }; walk(t[0], ''); return out.join('\\n'); })`;
