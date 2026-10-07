@@ -8,7 +8,7 @@
 //
 // Status flows one way. The worker writes `Shown` to chrome.storage.local; pages render it and re-render on
 // storage.onChanged. Pages never run the engine and never write its state; they ask.
-import type { JoinPreview, SyncReport, Warning } from './engine.ts';
+import type { JoinPreview, LogOutcome, RegisterOutcome, SyncReport, Warning } from './engine.ts';
 import type { StoreFailure, StoreStatus } from './ports.ts';
 import type { RemoteVisit } from './local.ts';
 import type { Platform } from './store-format.ts';
@@ -222,7 +222,7 @@ export function statusSentence(view: StatusView, now: number): string {
     case 'review':
       return `Paused: this would delete ${plural(view.removed, 'bookmark')}.`;
     case 'outdated':
-      return 'Bookmarks are paused: another device runs a newer helium-sync. Update this one.';
+      return 'Bookmarks are paused: another device runs a newer Synclium. Update this one.';
     case 'ok': {
       const others = view.devices === 0 ? 'no other devices yet' : plural(view.devices, 'other device');
       return `Synced ${ago(now - view.lastSync)} with ${others}.${view.catchingUp ? ' Catching up.' : ''}`;
@@ -239,9 +239,94 @@ export function statusSentence(view: StatusView, now: number): string {
  * because it is written once per cycle and read whenever.
  */
 export function badgeFor(view: StatusView): { readonly text: '' | '!'; readonly title: string } {
-  if (view.kind !== 'ok') return { text: '!', title: `Helium Sync: ${statusSentence(view, Date.now())}` };
+  if (view.kind !== 'ok') return { text: '!', title: `Synclium: ${statusSentence(view, Date.now())}` };
   const others = view.devices === 0 ? 'no other devices yet' : plural(view.devices, 'other device');
-  return { text: '', title: `Helium Sync: syncing with ${others}.` };
+  return { text: '', title: `Synclium: syncing with ${others}.` };
+}
+
+/** The colour of the status dot and the device map's links. `busy` is healthy but still catching up. */
+export type Tone = 'idle' | 'ok' | 'busy' | 'attention' | 'error';
+
+export function toneOf(view: StatusView): Tone {
+  switch (view.kind) {
+    case 'setup':
+      return 'idle';
+    case 'ok':
+      return view.catchingUp ? 'busy' : 'ok';
+    case 'error':
+      return 'error';
+    case 'paused':
+    case 'clash':
+    case 'review':
+    case 'outdated':
+      return 'attention';
+    default: {
+      const unreachable: never = view;
+      return unreachable;
+    }
+  }
+}
+
+/** One cell of the dashboard's facts row: a short state, then a sentence of detail. */
+export type Fact = { readonly value: string; readonly detail: string };
+
+const changes = ({ added, updated, removed }: { added: number; updated: number; removed: number }): string =>
+  [added > 0 ? `${added} added` : '', updated > 0 ? `${updated} changed` : '', removed > 0 ? `${removed} removed` : ''].filter((part) => part !== '').join(', ');
+
+export function bookmarksFact(outcome: RegisterOutcome): Fact {
+  switch (outcome.kind) {
+    case 'synced': {
+      const from = changes(outcome.applied);
+      if (from !== '') return { value: 'Up to date', detail: `Last sync: ${from} from other devices.` };
+      if (outcome.stamped > 0) return { value: 'Up to date', detail: `Last sync shared ${plural(outcome.stamped, 'edit')} from here.` };
+      return { value: 'Up to date', detail: 'Nothing changed in the last sync.' };
+    }
+    case 'pending':
+      return { value: 'Applying', detail: `${changes(outcome.pending) || 'A few changes'} left. Continues on the next sync.` };
+    case 'blocked':
+      return outcome.why.kind === 'mass-delete'
+        ? { value: 'Waiting for review', detail: `Would delete ${outcome.why.removed.removed} of ${outcome.why.of}.` }
+        : { value: 'Waiting for update', detail: 'Another device writes a newer format.' };
+    default: {
+      const unreachable: never = outcome;
+      return unreachable;
+    }
+  }
+}
+
+export function historyFact(outcome: LogOutcome): Fact {
+  switch (outcome.kind) {
+    case 'off':
+      return { value: 'Off', detail: 'Turn it on in Settings to search other devices.' };
+    case 'synced': {
+      const parts = [
+        `${plural(outcome.publishedDays, 'day')} shared from here`,
+        outcome.unpublishedDays > 0 ? `${outcome.unpublishedDays} waiting for the folder` : '',
+        outcome.pulledDays > 0 ? `${outcome.pulledDays} updated from other devices` : '',
+      ];
+      const detail = `${parts.filter((part) => part !== '').join(', ')}.`;
+      return outcome.deriveDaysLeft > 0 ? { value: 'Catching up', detail: `${plural(outcome.deriveDaysLeft, 'day')} left to read. ${detail}` } : { value: 'Up to date', detail };
+    }
+    default: {
+      const unreachable: never = outcome;
+      return unreachable;
+    }
+  }
+}
+
+export function folderFact(store: StoreStatus): Fact {
+  switch (store.access) {
+    case 'ready':
+      return { value: store.label, detail: 'Connected.' };
+    case 'failed':
+      return { value: store.label, detail: failureSentence(store.label, store.why) };
+    case 'not-set-up':
+      return { value: 'No folder', detail: 'Choose one in setup.' };
+    default: {
+      const unreachable: never = store;
+      return unreachable;
+    }
+  }
 }
 
 /** Setup's second screen: what Start will do, before anything is written. */
@@ -272,7 +357,7 @@ export function warningSentence(warning: Warning, nameOf: (device: string) => st
     case 'unknown-codec':
       return `${nameOf(warning.peer)} uses a file format this version can't read (${warning.codec}).`;
     case 'newer-version':
-      return `${nameOf(warning.peer)} runs a newer helium-sync; ${warning.file} is skipped until this one updates.`;
+      return `${nameOf(warning.peer)} runs a newer Synclium; ${warning.file} is skipped until this one updates.`;
     case 'foreign-file':
       return `An unexpected file "${warning.name}" is in the sync folder. It is ignored.`;
     case 'rejoined':

@@ -1,10 +1,10 @@
 // app.html, the options page. Routes by hash, so the popup and the worker can deep-link:
 //   #setup     store, device name, history choice, join preview, Start
 //   #allow     re-grant folder access after the grant lapsed (Chromium asks again after a restart)
-//   #status    status, devices, problems in plain words, Sync now, Check folder
+//   #status    the dashboard: status, a map of devices around the folder, bookmarks/history/folder facts, problems
 //   #review    a blocked mass delete and [Apply these deletions]
 //   #history   search over peers' visits, grouped by device and day
-//   #advanced  history toggle, change folder, forget this device
+//   #advanced  settings: history toggle, change folder, forget this device
 // The folder picker and the permission prompt need the click's gesture, so chooseFolder and allowFolder run
 // first thing in their click handlers.
 // Peer data (titles, urls, device names) only ever reaches the DOM as text or as an http(s) href.
@@ -14,14 +14,19 @@ import {
   SHOWN_KEY,
   ago,
   ask,
+  bookmarksFact,
+  folderFact,
   groupVisits,
+  historyFact,
   previewSentence,
   primaryAction,
   readShown,
   shownFrom,
   statusSentence,
+  toneOf,
   viewOf,
   warningSentence,
+  type Fact,
   type Shown,
 } from './ui.ts';
 import { parsePlatform } from './store-format.ts';
@@ -144,7 +149,7 @@ allow.button.onclick = async () => {
       status.access === 'not-set-up'
         ? 'No folder is set up yet. '
         : status.why.kind === 'needs-permission'
-          ? `Helium Sync still can't use ${status.label}. Click Allow access, then choose "Allow on every visit" in Helium's prompt.`
+          ? `Synclium still can't use ${status.label}. Click Allow access, then choose "Allow on every visit" in Helium's prompt.`
           : `${failureText(status.label, status.why)} `,
     );
     if (status.access === 'not-set-up' || status.why.kind === 'missing') {
@@ -163,47 +168,99 @@ allow.button.onclick = async () => {
 // ---------- Status ----------
 
 const status = {
-  line: byId('status-line', HTMLParagraphElement),
+  page: byId('status', HTMLElement),
+  text: byId('status-text', HTMLSpanElement),
+  when: byId('status-when', HTMLParagraphElement),
   sync: byId('status-sync', HTMLButtonElement),
   action: byId('status-action', HTMLButtonElement),
   check: byId('status-check', HTMLButtonElement),
-  checkResult: byId('check-result', HTMLParagraphElement),
-  devices: byId('devices', HTMLUListElement),
+  map: byId('map', HTMLDivElement),
+  self: byId('map-self', HTMLDivElement),
+  folder: byId('map-folder', HTMLDivElement),
+  peers: byId('map-peers', HTMLUListElement),
+  problems: byId('problems', HTMLDivElement),
   warnings: byId('warnings', HTMLUListElement),
 };
+const facts = {
+  bookmarks: [byId('fact-bookmarks', HTMLElement), byId('fact-bookmarks-detail', HTMLSpanElement)],
+  history: [byId('fact-history', HTMLElement), byId('fact-history-detail', HTMLSpanElement)],
+  folder: [byId('fact-folder', HTMLElement), byId('fact-folder-detail', HTMLSpanElement)],
+} as const;
+const whenLabel = (t: number) => new Date(t).toLocaleString(undefined, { weekday: 'short', hour: '2-digit', minute: '2-digit' });
+
+/** A device-map node: a name, then one muted line under it. */
+function node(target: HTMLElement, name: string, sub: string): void {
+  target.replaceChildren(el('strong', name), el('span', sub));
+}
+
+function setFact([value, detail]: readonly [HTMLElement, HTMLElement], fact: Fact | null): void {
+  value.textContent = fact?.value ?? '—';
+  detail.textContent = fact?.detail ?? '';
+}
 
 function renderStatus(): void {
   const view = viewOf(shown);
   const now = Date.now();
-  status.line.textContent = statusSentence(view, now);
+  status.page.dataset.tone = toneOf(view);
+  status.text.textContent = statusSentence(view, now);
   const next = primaryAction(view);
   status.action.hidden = next === null;
+  status.sync.classList.toggle('primary', next === null);
   if (next !== null) {
     status.action.textContent = next.label;
     status.action.onclick = () => (next.opens === null ? void ask({ kind: 'sync-now' }) : (location.hash = next.opens.slice('app.html'.length)));
   }
+
   const report = shown.report?.kind === 'cycle' ? shown.report : null;
+  status.when.textContent = report === null ? '' : `Last sync ${whenLabel(report.at)}. Checks for changes every few minutes.`;
+  node(status.self, report?.name ?? 'This device', 'This device');
+  const store = report?.store ?? { access: 'not-set-up' };
+  node(status.folder, store.access === 'not-set-up' ? 'No folder' : store.label, 'Sync folder');
+  status.folder.classList.toggle('broken', store.access !== 'ready');
+
   const peers = report?.peers ?? [];
-  rows(
-    status.devices,
-    [
-      ...(report === null ? [] : [`${report.name} (this device)`]),
-      ...peers.map((p) => `${p.name}, seen ${ago(now - p.lastSeen)}${p.idle ? ', idle' : ''}`),
-    ],
-    'No devices yet.',
+  status.peers.replaceChildren(
+    ...(peers.length === 0
+      ? [el('li', 'No other devices yet. Pick the same folder in Helium on another device.', 'empty')]
+      : [...peers]
+          .sort((a, b) => Number(a.idle) - Number(b.idle) || b.lastSeen - a.lastSeen)
+          .map((peer) => {
+            const item = el('li', '', peer.idle ? 'node idle' : 'node');
+            node(item, peer.name, peer.idle ? `Idle, last seen ${ago(now - peer.lastSeen)}` : `Seen ${ago(now - peer.lastSeen)}`);
+            return item;
+          })),
   );
+
+  setFact(facts.bookmarks, report === null ? null : bookmarksFact(report.bookmarks));
+  setFact(facts.history, report === null ? null : historyFact(report.history));
+  setFact(facts.folder, report === null ? null : folderFact(report.store));
+  status.check.hidden = report === null;
+
+  const warnings = report?.warnings ?? [];
   const nameOf = (device: string) => peers.find((p) => p.device === device)?.name ?? 'Another device';
-  rows(status.warnings, (report?.warnings ?? []).map((w) => warningSentence(w, nameOf)), 'None.');
+  status.problems.hidden = warnings.length === 0;
+  rows(status.warnings, warnings.map((w) => warningSentence(w, nameOf)), '');
 }
 onShown.push(renderStatus);
+// A sync in flight ends when the worker writes its next report, which re-renders and clears this.
+onShown.push(() => {
+  status.map.classList.remove('syncing');
+  status.sync.disabled = false;
+});
 
-status.sync.onclick = () => void ask({ kind: 'sync-now' });
+status.sync.onclick = async () => {
+  status.sync.disabled = true;
+  status.map.classList.add('syncing');
+  await ask({ kind: 'sync-now' });
+};
 status.check.onclick = async () => {
+  status.check.disabled = true;
   const result = await ask({ kind: 'check-store' });
-  status.checkResult.hidden = false;
-  status.checkResult.textContent =
+  status.check.disabled = false;
+  const [, detail] = facts.folder;
+  detail.textContent =
     result.access === 'ready'
-      ? `${result.label} is reachable and writable.`
+      ? 'Reachable and writable.'
       : result.access === 'failed'
         ? previewSentence({ kind: 'not-ready', store: result })
         : 'No folder is set up.';
@@ -281,6 +338,7 @@ const advanced = {
   changeResult: byId('change-result', HTMLParagraphElement),
   forget: byId('forget', HTMLButtonElement),
   deviceId: byId('device-id', HTMLParagraphElement),
+  folder: byId('adv-folder', HTMLParagraphElement),
 };
 
 function renderAdvanced(): void {
@@ -289,6 +347,7 @@ function renderAdvanced(): void {
   advanced.forget.disabled = report === null;
   if (report !== null) advanced.history.checked = report.history.kind !== 'off';
   advanced.deviceId.textContent = report === null ? 'This device is not set up.' : `${report.name}, device id ${report.device}`;
+  advanced.folder.textContent = report === null || report.store.access === 'not-set-up' ? 'No folder is set up.' : `Syncing through ${report.store.label}.`;
 }
 onShown.push(renderAdvanced);
 advanced.history.onchange = () => void ask({ kind: 'set-history', on: advanced.history.checked });
