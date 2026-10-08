@@ -71,4 +71,7 @@
    - [ ] Real-browser check of the Advanced opt-in UI and the Extensions page (permission prompts need a click)
    - [ ] Gatekeeper: the binary is ad-hoc signed only; a downloaded copy needs Developer ID signing + notarization (Skylive LLC?)
    - [ ] Windows/Linux paths for the companion (macOS only now)
+5. [x] Google Drive store (drive-store.ts): sign in on each device, folder found by every device. Typecheck 0, 121/121.
+   - [ ] Create the Google Cloud OAuth client (Web application, drive.file, redirect per extension id) and set GOOGLE_CLIENT_ID
+   - [ ] Verify in real Helium: two devices sign in, sync, and silent token renewal after an hour and after a restart
 - [x] Fix: emptying the reading list / engines / addresses no longer trips the mass-delete review (emptyReadIsSuspect per type)

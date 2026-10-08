@@ -1,5 +1,5 @@
 // app.html, the options page. Routes by hash, so the popup and the worker can deep-link:
-//   #setup     folder or WebDAV server, sync key, device name, history choice, join preview, Start
+//   #setup     Google Drive, folder, or WebDAV server, sync key, device name, history choice, join preview, Start
 //   #allow     re-grant access after it lapsed (a folder after a restart, a revoked server permission)
 //   #status    the dashboard: status, a map of devices around the store, bookmarks/history/store facts, problems
 //   #review    a blocked mass delete and [Apply these deletions]
@@ -7,8 +7,8 @@
 //   #extensions  share this device's extensions (optional `management` permission), offers from the others
 //   #advanced  settings: history toggle, sync key, change folder or server, full profile mode (optional
 //              `nativeMessaging`), forget this device
-// The folder picker and the permission prompts need the click's gesture, so chooseFolder, chooseWebdav,
-// allowStore, and chrome.permissions.request are called synchronously in their handlers.
+// The folder picker, Google's sign-in window, and the permission prompts need the click's gesture, so chooseFolder,
+// chooseDrive, chooseWebdav, allowStore, and chrome.permissions.request are called synchronously in their handlers.
 // Peer data (titles, urls, device names) only ever reaches the DOM as text or as an http(s) href.
 import type { JoinPreview } from './engine.ts';
 import {
@@ -39,6 +39,7 @@ import { formatSyncKey, mintSyncKey, parseSyncKey, type SyncKey } from './sync-k
 import { offers, storePage } from './extensions.ts';
 import { chooseFolder } from './folder-store.ts';
 import { chooseWebdav, parseDavUrl } from './webdav-store.ts';
+import { GOOGLE_CLIENT_ID, chooseDrive } from './drive-store.ts';
 import { allowStore, type Chosen } from './stores.ts';
 import { slots, type StoreChoice } from './local.ts';
 import type { StoreFailure } from './ports.ts';
@@ -157,6 +158,7 @@ async function useChoice(choosing: Promise<Chosen>, what: string, cancelled = ''
   // One choice at a time: a second click would race the first one's probe and candidate write.
   setup.choose.disabled = true;
   dav.connect.disabled = true;
+  drive.connect.disabled = true;
   try {
     const chosen = await choosing;
     if (chosen.kind === 'cancelled') {
@@ -171,10 +173,17 @@ async function useChoice(choosing: Promise<Chosen>, what: string, cancelled = ''
   } finally {
     setup.choose.disabled = false;
     dav.connect.disabled = false;
+    drive.connect.disabled = false;
   }
 }
 
 setup.choose.onclick = () => void useChoice(chooseFolder(), 'folder');
+
+/** Offered first when this build has a Google OAuth client; without one, setup reads as before. */
+const drive = { box: byId('drive', HTMLDivElement), lead: byId('folder-lead', HTMLParagraphElement), connect: byId('drive-connect', HTMLButtonElement) };
+drive.box.hidden = GOOGLE_CLIENT_ID === '';
+drive.lead.hidden = !drive.box.hidden;
+drive.connect.onclick = () => void useChoice(chooseDrive(), 'Google Drive', 'Sign in to Google to sync through Google Drive.');
 
 const dav = {
   form: byId('webdav-form', HTMLFormElement),

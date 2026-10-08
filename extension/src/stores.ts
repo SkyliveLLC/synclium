@@ -1,13 +1,14 @@
-// Which store a device syncs through: the folder it picked (folder-store.ts) or a WebDAV server
-// (webdav-store.ts), as saved in local.ts's store slots. The engine sees only the Store port; this module is the
-// one switch over the choice, so a third kind fails to compile here until it is handled.
+// Which store a device syncs through: the folder it picked (folder-store.ts), a WebDAV server
+// (webdav-store.ts), or Google Drive (drive-store.ts), as saved in local.ts's store slots. The engine sees only the Store port; this module is the
+// one switch over the choice, so a new kind fails to compile here until it is handled.
 import type { ProbeResult, StoreConnection, StoreStatus } from './ports.ts';
 import { allowRoot, connectRoot } from './folder-store.ts';
 import { allowWebdav, connectWebdav } from './webdav-store.ts';
+import { allowDrive, connectDrive } from './drive-store.ts';
 import { slots, type StoreChoice } from './local.ts';
 import type { StoreBackend } from './background.ts';
 
-/** What setup's choose step returns, for a folder or a server alike. */
+/** What setup's choose step returns, for a folder, a server, or Google Drive alike. */
 export type Chosen =
   /** The user closed the picker or declined the permission prompt. */
   | { readonly kind: 'cancelled' }
@@ -23,6 +24,8 @@ export async function connectChoice(choice: StoreChoice | undefined): Promise<St
       return connectRoot(choice.handle);
     case 'webdav':
       return connectWebdav(choice.config);
+    case 'drive':
+      return connectDrive(choice.config);
     default: {
       const unreachable: never = choice;
       return unreachable;
@@ -37,7 +40,8 @@ export const releaseBackend: StoreBackend = {
 };
 
 /**
- * App page, inside a click, for app.html#allow: the folder's re-grant prompt or the server's host permission.
+ * App page, inside a click, for app.html#allow: the folder's re-grant prompt, the server's host permission, or
+ * Google's sign-in window.
  * The page reads `choice` before the click, so the prompt is the first thing the click awaits.
  */
 export function allowStore(choice: StoreChoice | undefined): Promise<StoreStatus> {
@@ -48,6 +52,8 @@ export function allowStore(choice: StoreChoice | undefined): Promise<StoreStatus
       return allowRoot(choice.handle);
     case 'webdav':
       return allowWebdav(choice.config);
+    case 'drive':
+      return allowDrive(choice.config);
     default: {
       const unreachable: never = choice;
       return unreachable;

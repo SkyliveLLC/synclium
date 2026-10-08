@@ -34,7 +34,12 @@
       <ol class="steps">
         <li>
           <h3>Choose where to sync</h3>
-          <p class="note">A folder you already sync with iCloud Drive, Dropbox, or Syncthing. Each device picks the same folder.</p>
+          <div id="drive" hidden>
+            <p class="note">The easiest: sign in to Google Drive on each device with the same Google account. Synclium keeps its files in a Helium Sync folder there and can't see anything else in your Drive.</p>
+            <button id="drive-connect">Use Google Drive</button>
+            <p class="note">Or use a folder you already sync with iCloud Drive, Dropbox, or Syncthing.</p>
+          </div>
+          <p id="folder-lead" class="note">A folder you already sync with iCloud Drive, Dropbox, or Syncthing. Each device picks the same folder.</p>
           <button id="choose">Choose folder</button>
           <p id="choose-note" class="note">On another device, pick the same folder, or the Helium Sync folder inside it.</p>
           <details id="webdav">
@@ -64,7 +69,7 @@
           <h3>Name this device</h3>
           <input id="name" type="text" maxlength="64" autocomplete="off" aria-label="Device name">
           <label class="check"><input id="history-on" type="checkbox" class="switch" checked> Sync history</label>
-          <p class="note">Bookmarks and the last 90 days of history are stored in the folder or server, encrypted with the sync key.</p>
+          <p class="note">Bookmarks and the last 90 days of history are stored in the folder, server, or Drive, encrypted with the sync key.</p>
           <p id="preview" class="preview" hidden></p>
           <button id="start" class="primary" disabled>Start</button>
         </li>

@@ -23,12 +23,16 @@ import { parseKey, type StoreKey } from './store-format.ts';
 import { ASK_OF, type Intent, type IntentStore, type Trigger } from './scheduler.ts';
 import type { ChromeId } from './chrome-bookmarks.ts';
 import type { WebdavConfig } from './webdav-store.ts';
+import type { DriveConfig } from './drive-store.ts';
 
 /** `candidate` is what setup chose; `current` is what sync uses. Start promotes one to the other. */
 export type StoreSlot = 'current' | 'candidate';
 
-/** Where a device syncs: the folder it picked, or a WebDAV server with its credentials. */
-export type StoreChoice = { readonly kind: 'folder'; readonly handle: FileSystemDirectoryHandle } | { readonly kind: 'webdav'; readonly config: WebdavConfig };
+/** Where a device syncs: the folder it picked, a WebDAV server with its credentials, or a folder in Google Drive. */
+export type StoreChoice =
+  | { readonly kind: 'folder'; readonly handle: FileSystemDirectoryHandle }
+  | { readonly kind: 'webdav'; readonly config: WebdavConfig }
+  | { readonly kind: 'drive'; readonly config: DriveConfig };
 
 export type RemoteVisit = Visit & { readonly device: DeviceId; readonly deviceName: string };
 

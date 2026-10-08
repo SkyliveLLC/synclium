@@ -1,6 +1,6 @@
 # Synclium privacy policy
 
-Last updated: 2026-10-07
+Last updated: 2026-10-08
 
 Synclium syncs your own browser data between your own browsers. It has no server, no account, no analytics, and no ads. The developer (Skylive LLC) never receives, sees, or stores any of your data.
 
@@ -17,20 +17,21 @@ On each device where you set it up, Synclium reads:
 
 Synclium writes this data to a place **you** choose and control, and nowhere else:
 
+- a "Helium Sync" folder in your own Google Drive, if you sign in to Google during setup,
 - a folder on your computer that you already sync (for example iCloud Drive, Dropbox, or Syncthing), or
 - a WebDAV server you already use (for example Nextcloud, ownCloud, or Synology).
 
-Every file Synclium writes there is encrypted (AES-256-GCM) with a sync key that is generated on your first device and never written to the folder or server. Your other devices get the key only when you paste it in. Whoever runs the folder sync service or the WebDAV server sees encrypted files and device IDs, not your bookmarks or history.
+Every file Synclium writes there is encrypted (AES-256-GCM) with a sync key that is generated on your first device and never written to the folder or server. Your other devices get the key only when you paste it in. Google, the folder sync service, or whoever runs the WebDAV server sees encrypted files and device IDs, not your bookmarks or history.
 
 ## What stays on your device
 
-Synclium's working state stays in the browser's local extension storage on each device and is never sent anywhere: the sync key, device name, sync progress, the history index used for searching your other devices' history, and your WebDAV address and credentials if you use WebDAV.
+Synclium's working state stays in the browser's local extension storage on each device and is never sent anywhere: the sync key, device name, sync progress, the history index used for searching your other devices' history, your WebDAV address and credentials if you use WebDAV, and your Google account's address if you use Google Drive. The Google access token is kept in memory only and lasts an hour.
 
 The optional companion app (full profile mode) runs on your own computer and talks only to Synclium in the same browser, through Chrome's native messaging. It has no network access of its own.
 
 ## Network requests
 
-Synclium sends network requests only to the WebDAV server you enter, and only after you grant access to that one address. Links on the Extensions page open Chrome Web Store pages when you click them.
+Synclium sends network requests only to the WebDAV server you enter, after you grant access to that one address, or, if you choose Google Drive, to Google's sign-in and Drive API. With Google Drive, Synclium asks only for the `drive.file` permission: it can see and change only the files it created, never anything else in your Drive. Links on the Extensions page open Chrome Web Store pages when you click them.
 
 ## Sharing and sale
 
@@ -38,7 +39,7 @@ Synclium does not sell, share, or transfer your data to anyone, does not use it 
 
 ## Removing your data
 
-Uninstalling Synclium removes its local state from that browser. The encrypted files in your folder or on your WebDAV server belong to you: delete the sync folder (by default named "Helium Sync") to remove them.
+Uninstalling Synclium removes its local state from that browser. The encrypted files in your folder or on your WebDAV server belong to you: delete the sync folder (by default named "Helium Sync") to remove them. To revoke Synclium's Google Drive access, remove it at https://myaccount.google.com/permissions.
 
 ## Contact
 
