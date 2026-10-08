@@ -8,7 +8,7 @@ Copy for the developer dashboard, one section per dashboard field. Images are re
 **Name:** Synclium (from the manifest)
 
 **Summary** (132 characters max, from the manifest `description`):
-Sync bookmarks, reading list, history and extensions between Helium browsers via your own folder or WebDAV. End-to-end encrypted.
+Sync bookmarks, reading list, history and extensions between Helium browsers via Google Drive, a folder, or WebDAV. Encrypted.
 
 **Category:** Productivity → Tools
 
@@ -19,10 +19,11 @@ Sync bookmarks, reading list, history and extensions between Helium browsers via
 Synclium keeps your bookmarks, reading list, history, and extensions in step across your Helium browsers, with no account and no server of ours.
 
 It syncs through storage you already have:
+• your Google Drive: sign in on each device, and that's it,
 • a folder you already sync, such as iCloud Drive, Dropbox, or Syncthing, or
 • a WebDAV server you already use, such as Nextcloud, ownCloud, Synology, Fastmail, or Koofr.
 
-Everything Synclium writes there is end-to-end encrypted with a sync key that only your devices hold. Your first device creates the key; you paste it on the others. The folder or server only ever sees encrypted files.
+Everything Synclium writes there is end-to-end encrypted with a sync key that only your devices hold. Your first device creates the key; you paste it on the others. Google Drive, the folder, or the server only ever sees encrypted files.
 
 What it syncs
 • Bookmarks, merged across devices without duplicates. A large unexpected deletion waits for your review instead of spreading.
@@ -32,7 +33,7 @@ What it syncs
 
 Private by design
 • No account, no analytics, no ads, no servers of ours.
-• Network requests go only to the WebDAV server you enter, after you grant access to that one address.
+• Network requests go only to Google Drive, if you choose it (Synclium sees only the files it created there), or to the WebDAV server you enter, after you grant access to that one address.
 • Open source under the MIT license: https://github.com/SkyliveLLC/synclium
 
 Built for Helium; it uses only standard Chromium extension APIs.
@@ -60,6 +61,7 @@ Sync the user's own browser data (bookmarks, reading list, history, and the list
 | `storage` | Keeps the sync status the popup and pages display. |
 | `unlimitedStorage` | The local index of other devices' history and the sync state live in IndexedDB and can exceed the default quota for long histories. |
 | `alarms` | Schedules the periodic sync and resumes a sync that was interrupted when the service worker stopped. |
+| `identity` | Signs in to Google with `chrome.identity.launchWebAuthFlow` when the user chooses Google Drive as the sync location, with the `drive.file` scope only, so Synclium can read and write the encrypted files it created in the user's Drive. Unused if the user syncs through a folder or WebDAV. |
 | `management` (optional) | Requested only when the user turns on "Share extensions": lists installed extensions so the user can see which ones their other devices have. Synclium never installs, enables, or removes extensions. |
 | `nativeMessaging` (optional) | Requested only when the user opts in to full profile mode in Advanced settings: talks to the companion app the user installs, which applies settings, search engines, and addresses to the browser profile after the browser quits. |
 | Host permission `https://*/*`, `http://localhost/*`, `http://127.0.0.1/*` (optional) | Requested at runtime for the one WebDAV server address the user enters during setup, so Synclium can read and write its encrypted files there. Nothing is requested if the user syncs through a folder. Plain http is allowed only to this machine. |
@@ -68,7 +70,7 @@ Sync the user's own browser data (bookmarks, reading list, history, and the list
 
 **Data usage** (check these):
 - Web history: history and bookmarks/reading list are synced between the user's devices.
-- Authentication information: the WebDAV username and app password, kept in local extension storage and sent only to that WebDAV server.
+- Authentication information: the WebDAV username and app password, kept in local extension storage and sent only to that WebDAV server; with Google Drive, a short-lived Google access token kept in memory and sent only to Google's Drive API.
 
 Certify all three: not sold to third parties; not used or transferred for purposes unrelated to the single purpose; not used or transferred to determine creditworthiness or for lending.
 

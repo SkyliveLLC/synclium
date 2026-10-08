@@ -2,14 +2,14 @@
   "manifest_version": 3,
   "name": "Synclium",
   "version": "0.1.0",
-  "description": "Sync bookmarks, reading list, history and extensions between Helium browsers via your own folder or WebDAV. End-to-end encrypted.",
+  "description": "Sync bookmarks, reading list, history and extensions between Helium browsers via Google Drive, a folder, or WebDAV. Encrypted.",
   "minimum_chrome_version": "134",
   "background": { "service_worker": "worker.js", "type": "module" },
   "icons": { "16": "icons/icon-16.png", "32": "icons/icon-32.png", "48": "icons/icon-48.png", "128": "icons/icon-128.png" },
   "action": { "default_popup": "popup.html", "default_title": "Synclium", "default_icon": { "16": "icons/icon-16.png", "32": "icons/icon-32.png" } },
   "options_ui": { "page": "app.html", "open_in_tab": true },
   "omnibox": { "keyword": "hs" },
-  "permissions": ["bookmarks", "readingList", "history", "storage", "unlimitedStorage", "alarms"],
+  "permissions": ["bookmarks", "readingList", "history", "storage", "unlimitedStorage", "alarms", "identity"],
   "optional_permissions": ["management", "nativeMessaging"],
   "optional_host_permissions": ["https://*/*", "http://localhost/*", "http://127.0.0.1/*"]
 }

@@ -98,6 +98,7 @@ engine.ts            sync + forget, SyncReport, JoinPreview, fetch and publish p
 stores.ts            the saved StoreChoice -> connect, allow; the release StoreBackend
 folder-store.ts      File System Access: choose, connect, allow, folderStore
 webdav-store.ts      WebDAV over fetch: choose, connect, allow, webdavStore
+drive-store.ts       Google Drive over fetch: sign-in, choose, connect, allow, driveStore
 chrome-bookmarks.ts  RegisterChannel<Bookmark>, chrome id map, planApply
 chrome-history.ts    LogSource<Visit> over chrome.history, read-only
 chrome-reading-list.ts  RegisterChannel<ReadingItem> over chrome.readingList
@@ -335,6 +336,18 @@ Unit 4 (`webdav-store.ts`, `stores.ts`) adds WebDAV as a second choice at setup,
 - **A version is the ETag**, sent back as If-None-Match. A server without ETags gets a content hash, so every get downloads but unchanged still holds.
 - **A 404 below a missing root is `missing`**, never an empty store, as for a folder. Offline and 5xx are `unreachable`; 401, 403, and 507 are `rejected`.
 - **Advanced's Change opens setup**, which offers both kinds. Existing installs read the old `folder:*` slots as not set up and choose again (pre-release, no migration).
+
+Unit 5 (`drive-store.ts`) adds Google Drive as a third choice, offered first at setup because it needs nothing installed and nothing typed: one click and a Google sign-in on each device. It is one more `StoreChoice` (`{ kind: 'drive', config: { folder, account } }`) behind `stores.ts`, so the engine, the format, and the popup states are unchanged. Verified: typecheck exits 0, 121 of 121 tests pass, including the Store and a two-device engine run against an in-memory Drive (`test/support/fake-drive.ts`). Decisions:
+
+- **`chrome.identity.launchWebAuthFlow` with Google's token flow**, not `getAuthToken`, which needs Chrome's Google sign-in that Helium lacks. No client secret ships. The token lasts an hour, lives in `chrome.storage.session`, and is renewed without a window (`prompt=none`, with the account as `login_hint`). When renewal needs a click the store reads `needs-permission`, so the popup's existing Allow access button signs in again.
+- **Scope `drive.file`**: Synclium sees only files its OAuth client created. Every device signs in through the same client, so each finds the folder the first one made, searched by name anywhere in the Drive (the user may move it), oldest first so devices that raced agree.
+- **A version is the file's md5**, so an unchanged peer costs one query and no download. Folder ids are cached for one cycle; only this device deletes its own folders.
+- **A trashed store is `missing`** and is never recreated: anything that would create a file or folder first checks the root. 401 renews once, then `needs-permission`; 429 and rate-limit 403s are `unreachable`; a full Drive is `rejected`.
+- **Needs an OAuth client per release** (`GOOGLE_CLIENT_ID`), whose redirect URIs list each extension id. Without one, setup hides the option.
+
+Open from unit 5:
+
+- Not yet run in real Helium: whether its `launchWebAuthFlow` window keeps the Google session so silent renewal works across restarts, or asks for Allow access after each one.
 
 Open from unit 4:
 

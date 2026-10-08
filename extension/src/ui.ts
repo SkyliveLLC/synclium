@@ -431,7 +431,7 @@ export function folderFact(store: StoreStatus): Fact {
 export function previewSentence(preview: JoinPreview): string {
   switch (preview.kind) {
     case 'not-ready':
-      return preview.store.access === 'failed' ? failureSentence(preview.store.label, preview.store.why) : 'Choose a folder or a WebDAV server first.';
+      return preview.store.access === 'failed' ? failureSentence(preview.store.label, preview.store.why) : 'Choose Google Drive, a folder, or a WebDAV server first.';
     case 'first-device':
       return `New sync folder. ${plural(preview.bookmarks, 'bookmark')} will be shared.`;
     case 'needs-key':
