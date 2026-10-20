@@ -1,0 +1,57 @@
+name: Release companion
+
+# Push a tag `companion-v<COMPANION_VERSION>` (extension/src/profile-mode.ts) to publish the companion for every
+# system. The extension links to this release's files by name (companionAsset), so the tag must match the version.
+on:
+  push:
+    tags: ['companion-v*']
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        os: [macos-latest, macos-15-intel, ubuntu-latest, ubuntu-24.04-arm, windows-latest, windows-11-arm]
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: companion
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: companion/package-lock.json
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: companion-${{ matrix.os }}
+          path: companion/dist/helium-sync-companion-*
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: The tag matches COMPANION_VERSION
+        run: |
+          version=$(node -e "import('./extension/src/profile-mode.ts').then((m) => console.log(m.COMPANION_VERSION))")
+          test "$GITHUB_REF_NAME" = "companion-v$version" || { echo "tag $GITHUB_REF_NAME, COMPANION_VERSION $version"; exit 1; }
+      - uses: actions/download-artifact@v4
+        with:
+          path: assets
+          merge-multiple: true
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          ls -l assets
+          gh release create "$GITHUB_REF_NAME" assets/* --title "Synclium companion ${GITHUB_REF_NAME#companion-v}" \
+            --notes "The companion for Synclium's full profile mode. Synclium's Settings page shows the one command that installs it."

@@ -13,8 +13,30 @@ import { isItemId, type ItemId, type Json, type Live, type RegisterType } from '
 export const HOST_NAME = 'computer.skylive.helium_sync';
 /** Bumped on an incompatible protocol change. The extension refuses a companion with another one. */
 export const PROTOCOL_VERSION = 1;
-/** `meta.version` of Web Data the companion has been checked against (P9). Others are read-only refused. */
-export const WEB_DATA_VERSIONS: readonly number[] = [154];
+/** The companion this extension installs: the GitHub release tagged `companion-v<version>` (release-companion.yml). */
+export const COMPANION_VERSION = '0.1.0';
+const RELEASES = 'https://github.com/SkyliveLLC/synclium/releases';
+export const COMPANION_RELEASE_PAGE = `${RELEASES}/tag/companion-v${COMPANION_VERSION}`;
+export const companionDownload = (asset: string) => `${RELEASES}/download/companion-v${COMPANION_VERSION}/${asset}`;
+
+const SYSTEMS = new Map([['mac', 'macos'], ['linux', 'linux'], ['win', 'windows']]);
+const CPUS = new Map([['x86-64', 'x64'], ['arm64', 'arm64']]);
+
+/**
+ * The release file for a system, named from `chrome.runtime.getPlatformInfo()`'s `os` and `arch` (the companion's
+ * build maps Node's names onto these). Null where no companion is built.
+ */
+export function companionAsset(os: string, arch: string): string | null {
+  const system = SYSTEMS.get(os);
+  const cpu = CPUS.get(arch);
+  if (system === undefined || cpu === undefined) return null;
+  return `helium-sync-companion-${system}-${cpu}${system === 'windows' ? '.exe' : ''}`;
+}
+/**
+ * `meta.version` of Web Data the companion has been checked against (P9). Others are read-only refused. 155 and
+ * 156 (Helium 0.19.4) migrate no table it touches: keywords, addresses, and address_type_tokens are unchanged.
+ */
+export const WEB_DATA_VERSIONS: readonly number[] = [154, 155, 156];
 
 // ---------- Settings: unprotected Preferences paths ----------
 

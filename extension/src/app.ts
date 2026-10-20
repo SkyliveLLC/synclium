@@ -13,6 +13,7 @@
 import type { JoinPreview } from './engine.ts';
 import {
   DEVICE_NAMES,
+  REOPEN_KEY,
   SHOWN_KEY,
   ago,
   ask,
@@ -43,7 +44,7 @@ import { GOOGLE_CLIENT_ID, chooseDrive } from './drive-store.ts';
 import { allowStore, type Chosen } from './stores.ts';
 import { slots, type StoreChoice } from './local.ts';
 import type { StoreFailure } from './ports.ts';
-import { PROTOCOL_VERSION } from './profile-mode.ts';
+import { COMPANION_RELEASE_PAGE, PROTOCOL_VERSION, companionAsset, companionDownload } from './profile-mode.ts';
 
 const SECTIONS = ['setup', 'allow', 'status', 'review', 'history', 'extensions', 'advanced'] as const;
 type Section = (typeof SECTIONS)[number];
@@ -520,7 +521,11 @@ const pm = {
   allow: byId('pm-allow', HTMLDivElement),
   grant: byId('pm-grant', HTMLButtonElement),
   install: byId('pm-install', HTMLDivElement),
+  where: byId('pm-where', HTMLParagraphElement),
   command: byId('pm-command', HTMLElement),
+  download: byId('pm-download', HTMLAnchorElement),
+  release: byId('pm-release', HTMLAnchorElement),
+  unsupported: byId('pm-unsupported', HTMLParagraphElement),
   copy: byId('pm-copy', HTMLButtonElement),
   error: byId('pm-error', HTMLParagraphElement),
   check: byId('pm-check', HTMLButtonElement),
@@ -531,7 +536,23 @@ const pm = {
   off: byId('pm-off', HTMLButtonElement),
 };
 const NATIVE: chrome.permissions.Permissions = { permissions: ['nativeMessaging'] };
-const INSTALL = `helium-sync-companion install --extension-id ${chrome.runtime.id}`;
+
+/**
+ * Where to run the one command that downloads this system's companion and registers it for this extension, or null
+ * where none is built. curl leaves no quarantine mark, so macOS runs the ad-hoc signed binary without a prompt.
+ */
+function installStep({ os, arch }: chrome.runtime.PlatformInfo): { readonly where: string; readonly command: string; readonly url: string } | null {
+  const asset = companionAsset(os, arch);
+  if (asset === null) return null;
+  const url = companionDownload(asset);
+  const install = `install --extension-id ${chrome.runtime.id}`;
+  if (os === 'win') {
+    const file = `"$env:TEMP\\${asset}"`;
+    return { where: 'Run this in PowerShell, then check again:', command: `curl.exe -fLo ${file} ${url}; if ($?) { & ${file} ${install} }`, url };
+  }
+  const where = `Run this in ${os === 'mac' ? 'Terminal' : 'a terminal'}, then check again:`;
+  return { where, command: `f=$(mktemp) && curl -fLo "$f" ${url} && chmod +x "$f" && "$f" ${install}; rm -f "$f"`, url };
+}
 
 function renderProfileLine(): void {
   pm.line.textContent = profileSentence(shown.profile);
@@ -539,8 +560,21 @@ function renderProfileLine(): void {
 }
 onShown.push(renderProfileLine);
 
-/** One step at a time: allow, install, pick a profile and turn on, or turn off. Asks the companion for hello. */
-async function renderProfileMode(): Promise<void> {
+/**
+ * One step at a time: allow, install, pick a profile and turn on, or turn off. Asks the companion for hello. Why it
+ * didn't answer shows only after Check again: before the install, it can only be "not found".
+ */
+async function renderProfileMode(checked = false): Promise<void> {
+  const step = installStep(await chrome.runtime.getPlatformInfo());
+  pm.unsupported.hidden = step !== null;
+  if (step === null) {
+    for (const part of [pm.allow, pm.install, pm.pick, pm.off, pm.error]) part.hidden = true;
+    return;
+  }
+  pm.where.textContent = step.where;
+  pm.command.textContent = step.command;
+  pm.download.href = step.url;
+  pm.release.href = COMPANION_RELEASE_PAGE;
   const setup = await ask({ kind: 'profile-status' });
   const { hello } = setup;
   const compatible = hello !== null && hello.protocol === PROTOCOL_VERSION;
@@ -548,8 +582,7 @@ async function renderProfileMode(): Promise<void> {
   pm.install.hidden = !setup.permission || compatible;
   pm.pick.hidden = !compatible || setup.on !== null;
   pm.off.hidden = setup.on === null;
-  pm.command.textContent = INSTALL;
-  pm.error.hidden = setup.error === null && (hello === null || compatible);
+  pm.error.hidden = (setup.error === null || !checked) && (hello === null || compatible);
   pm.error.textContent =
     hello !== null && !compatible ? `This companion speaks protocol ${hello.protocol}; this extension needs ${PROTOCOL_VERSION}. Install the companion from the same build.` : `The companion didn't answer: ${setup.error ?? ''}`;
   if (!compatible || setup.on !== null) return;
@@ -562,13 +595,15 @@ async function renderProfileMode(): Promise<void> {
   }
 }
 
-// The permission prompt needs this click's gesture, so the request comes first.
+// The permission prompt needs this click's gesture, so nothing is awaited before the request. A grant restarts
+// the extension, closing this page (background.ts); the worker then opens it again from REOPEN_KEY.
 pm.grant.onclick = async () => {
-  await chrome.permissions.request(NATIVE);
+  void chrome.storage.local.set({ [REOPEN_KEY]: 'app.html#advanced' });
+  if (!(await chrome.permissions.request(NATIVE))) await chrome.storage.local.remove(REOPEN_KEY);
   await renderProfileMode();
 };
-pm.copy.onclick = () => void navigator.clipboard.writeText(INSTALL);
-pm.check.onclick = () => void renderProfileMode();
+pm.copy.onclick = () => void navigator.clipboard.writeText(pm.command.textContent ?? '');
+pm.check.onclick = () => void renderProfileMode(true);
 pm.on.onclick = async () => {
   pm.on.disabled = true;
   await ask({ kind: 'set-profile-mode', dir: pm.profile.value });

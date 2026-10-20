@@ -7,7 +7,7 @@ import { itemId } from './support/fake-companion.ts';
 import { ground } from './support/ground.ts';
 import type { Json } from '../src/model.ts';
 import type { SyncReport } from '../src/engine.ts';
-import type { Address, SearchEngine, Setting } from '../src/profile-mode.ts';
+import { companionAsset, type Address, type SearchEngine, type Setting } from '../src/profile-mode.ts';
 import { keys } from '../src/store-format.ts';
 
 const cycleReport = async (d: Device): Promise<Extract<SyncReport, { kind: 'cycle' }>> => {
@@ -161,4 +161,13 @@ test('an unchecked Web Data version sits engines and addresses out without delet
   assert.equal(report.settings.kind, 'synced');
   assert.equal(y.companion.engines.rows.size, 1, 'the rows X could not read are not deletions');
   assert.deepEqual(y.companion.settings.rows.get(LANGS), pref('fr'));
+});
+
+test('the companion download is named per system; none where none is built', () => {
+  assert.equal(companionAsset('mac', 'arm64'), 'helium-sync-companion-macos-arm64');
+  assert.equal(companionAsset('mac', 'x86-64'), 'helium-sync-companion-macos-x64');
+  assert.equal(companionAsset('linux', 'x86-64'), 'helium-sync-companion-linux-x64');
+  assert.equal(companionAsset('win', 'arm64'), 'helium-sync-companion-windows-arm64.exe');
+  assert.equal(companionAsset('cros', 'x86-64'), null);
+  assert.equal(companionAsset('win', 'x86-32'), null);
 });

@@ -1,4 +1,5 @@
-// popup.html: the status dot and one sentence of status, [Sync now], and the one button the status calls for.
+// popup.html: the status dot and one sentence of status, [Sync now], and the one button the status calls for, which
+// takes the primary style from Sync now while it shows.
 import { SHOWN_KEY, ask, primaryAction, readShown, shownFrom, statusSentence, toneOf, viewOf, type Shown } from './ui.ts';
 
 function byId<E extends HTMLElement>(id: string, type: { new (): E }): E {
@@ -22,6 +23,8 @@ function render(): void {
   sync.hidden = view.kind === 'setup';
   const next = primaryAction(view);
   action.hidden = next === null;
+  action.classList.toggle('primary', next !== null);
+  sync.classList.toggle('primary', next === null);
   if (next === null) return;
   action.textContent = next.label;
   action.onclick = () => (next.opens === null ? void ask({ kind: 'sync-now' }) : void chrome.tabs.create({ url: chrome.runtime.getURL(next.opens) }));

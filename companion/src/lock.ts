@@ -1,9 +1,9 @@
-// Two locks: Helium's own SingletonLock (is Helium running on this user data dir?) and the apply helper's pid
-// file (is a helper already waiting for this user data dir?).
-import { linkSync, mkdirSync, readFileSync, readlinkSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
+// Two locks: Helium's own (SingletonLock, or lockfile on Windows: is Helium running on this user data dir?) and
+// the apply helper's pid file (is a helper already waiting for this user data dir?).
+import { closeSync, linkSync, mkdirSync, openSync, readFileSync, readlinkSync, rmSync, unlinkSync, writeFileSync } from 'node:fs';
 import { hostname } from 'node:os';
 import { join } from 'node:path';
-import { keyOf } from './paths.ts';
+import { currentOs, keyOf, type Os } from './paths.ts';
 
 export function isAlive(pid: number): boolean {
   if (!Number.isInteger(pid) || pid <= 0) return false;
@@ -16,11 +16,29 @@ export function isAlive(pid: number): boolean {
   }
 }
 
+/** Whether no Helium holds `userDataDir`. Anything unexpected counts as running: never write on a guess. */
+export function isHeliumClosed(userDataDir: string, os: Os = currentOs()): boolean {
+  return os === 'win32' ? lockfileReleased(userDataDir) : singletonLockReleased(userDataDir);
+}
+
 /**
- * Helium is closed when `SingletonLock` is gone, or its target `<host>-<pid>` names another host or a dead pid
- * (the link survives a crash, P1). A link that does not parse counts as running: never write on a guess.
+ * Windows: Helium holds `lockfile` open, sharing it for reading only, and deletes it as it exits. Opening it for
+ * writing fails (EBUSY) while Helium runs; a file a crash left behind opens.
  */
-export function isHeliumClosed(userDataDir: string): boolean {
+function lockfileReleased(userDataDir: string): boolean {
+  try {
+    closeSync(openSync(join(userDataDir, 'lockfile'), 'r+'));
+    return true;
+  } catch (error) {
+    return error instanceof Error && 'code' in error && error.code === 'ENOENT';
+  }
+}
+
+/**
+ * macOS and Linux: `SingletonLock` is gone, or its target `<host>-<pid>` names another host or a dead pid (the
+ * link survives a crash, P1).
+ */
+function singletonLockReleased(userDataDir: string): boolean {
   let target: string;
   try {
     target = readlinkSync(join(userDataDir, 'SingletonLock'));
