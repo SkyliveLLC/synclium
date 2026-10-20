@@ -241,6 +241,7 @@ export function startWorker(backend: StoreBackend): void {
           if (probe.kind === 'failed') return { kind: 'not-ready', store: { access: 'failed', label: conn.label, why: probe.why } };
           // The page only offers Start after a matching preview, but the folder may have changed since.
           const preview = await (await engineFor('candidate')).sync({ preview: true, key: message.key });
+          if (preview.kind === 'not-ready') return preview;
           if (preview.kind === 'needs-key') return { kind: 'wrong-key' };
           await backend.promote();
           // A device that was already set up (Change, or a moved folder picked again) first removes its old

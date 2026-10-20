@@ -166,6 +166,7 @@ export type PeerExtensions = { readonly device: DeviceId; readonly name: string;
 
 /** Setup's second screen. Turns the silent first-join adoption into something the user sees before Start. */
 export type JoinPreview =
+  /** Not set up, not usable, or it failed during the preview. */
   | { readonly kind: 'not-ready'; readonly store: StoreStatus }
   | { readonly kind: 'first-device'; readonly label: string; readonly bookmarks: number }
   /** Devices sync here under another key, and none under this one. Setup asks for theirs. */
@@ -507,7 +508,9 @@ export function createEngine(deps: EngineDeps): Engine {
 
   /**
    * The fetch and the bookmark merge as a fresh device. Only the channel's minted ids are written, as a real first
-   * cycle would. Peers are the devices that open with `key`; any others only make it `needs-key`.
+   * cycle would. Peers are the devices that open with `key`; any others only make it `needs-key`. A store error
+   * trips the fuse and leaves unread devices out, so a preview that hit one is `not-ready`: an outage must never
+   * read as an empty store.
    */
   async function preview(key: SyncKey): Promise<JoinPreview> {
     const now = deps.clock.now();
@@ -518,12 +521,14 @@ export function createEngine(deps: EngineDeps): Engine {
     const self = (await deps.local.load())?.device ?? mintDeviceId();
     const warnings: Warning[] = [];
     const peers = await fetchPeers(fuse, cipher, self, new Map(), warnings);
+    if (fuse.failure !== null) return { kind: 'not-ready', store: statusOf(conn, fuse) };
     const others = warnings.filter((w) => w.kind === 'other-key').length;
     if (peers.size === 0 && others > 0) return { kind: 'needs-key', label: conn.label, devices: others };
     const live = livePeers(peers, now, policy);
     const me: DeviceLocal = { ...freshDeviceLocal(self, { name: '', historyOn: true, key }, joinCursor(now, history.retentionDays)), peers };
     const ctx: CycleContext = { me, store: fuse, live, cipher, now, budget: { expired: () => true }, policy };
     const step = await syncRegisters(ctx, bookmarks, deps.bookmarks, null, { force: false, commit: async () => {}, dryRun: true });
+    if (fuse.failure !== null) return { kind: 'not-ready', store: statusOf(conn, fuse) };
     if (live.size === 0) return { kind: 'first-device', label: conn.label, bookmarks: step.adopted.toPublish };
     let historyDays = 0;
     for (const manifest of live.values()) for (const rel of manifest.files.keys()) if (parseRel(rel)?.kind === 'shard') historyDays++;
