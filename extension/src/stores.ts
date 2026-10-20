@@ -1,7 +1,10 @@
 // Which store a device syncs through: the folder it picked (folder-store.ts), a WebDAV server
 // (webdav-store.ts), or Google Drive (drive-store.ts), as saved in local.ts's store slots. The engine sees only the Store port; this module is the
 // one switch over the choice, so a new kind fails to compile here until it is handled.
+//
+// Connecting takes the sync group's key. A store addressed by its choice (folder, server, Drive) ignores it.
 import type { ProbeResult, StoreConnection, StoreStatus } from './ports.ts';
+import type { SyncKey } from './sync-key.ts';
 import { allowRoot, connectRoot } from './folder-store.ts';
 import { allowWebdav, connectWebdav } from './webdav-store.ts';
 import { allowDrive, connectDrive } from './drive-store.ts';
@@ -16,7 +19,7 @@ export type Chosen =
   | { readonly kind: 'chosen'; readonly label: string; readonly probe: ProbeResult };
 
 /** Never prompts. */
-export async function connectChoice(choice: StoreChoice | undefined): Promise<StoreConnection> {
+export async function connectChoice(choice: StoreChoice | undefined, _key: SyncKey): Promise<StoreConnection> {
   switch (choice?.kind) {
     case undefined:
       return { access: 'not-set-up' };
@@ -35,7 +38,7 @@ export async function connectChoice(choice: StoreChoice | undefined): Promise<St
 
 /** What the release worker runs on. */
 export const releaseBackend: StoreBackend = {
-  connect: async (slot) => connectChoice(await slots.get(slot)),
+  connect: async (slot, key) => connectChoice(await slots.get(slot), key),
   promote: slots.promote,
 };
 

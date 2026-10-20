@@ -4,7 +4,7 @@
 // holds state across wakes: each cycle rebuilds the engine from IndexedDB.
 //
 // Which store backend sync talks to is the one thing the entry chooses: stores.ts in the release entry
-// (worker.ts), which serves the folder or WebDAV server setup chose; dev-store.ts in the dev entry (worker-dev.ts).
+// (worker.ts), which serves the store setup chose; dev-store.ts in the dev entry (worker-dev.ts).
 import { createEngine, type Engine } from './engine.ts';
 import { chromeBookmarks } from './chrome-bookmarks.ts';
 import { chromeHistorySource } from './chrome-history.ts';
@@ -17,12 +17,16 @@ import { historyIndex, historyLocal, indexedLocal, intents, type StoreSlot } fro
 import { parsePlatform, type Platform } from './store-format.ts';
 import { ALARM_MIN_MS, POLL_MINUTES, createScheduler, withCycleLock, type Locks, type Timers, type Trigger, type Wake } from './scheduler.ts';
 import { statusOf, type ProfileChannels, type StoreConnection } from './ports.ts';
+import type { SyncKey } from './sync-key.ts';
 import { DEVICE_NAMES, REOPEN_KEY, badgeFor, readShown, storedShown, viewOf, type ProfileStatus, type Shown, type StartResult, type UiMessage, type UiReply, type Wire } from './ui.ts';
 
-/** Where sync stores its files. stores.ts's `releaseBackend` in release. */
+/** Where sync stores its files. stores.ts's `releaseBackend` in release, dev-store.ts's in dev. */
 export type StoreBackend = {
-  /** Never prompts. Called at the start of every cycle, so lapsed access shows up as a paused cycle. */
-  connect(slot: StoreSlot): Promise<StoreConnection>;
+  /**
+   * Never prompts. Called at the start of every cycle, so lapsed access shows up as a paused cycle. `key` is the
+   * sync group's: a store addressed by the key finds its place by it, the others ignore it.
+   */
+  connect(slot: StoreSlot, key: SyncKey): Promise<StoreConnection>;
   /** Worker, under the cycle lock, on Start: `candidate` becomes `current`. */
   promote(): Promise<void>;
 };
@@ -79,7 +83,7 @@ export function startWorker(backend: StoreBackend): void {
   /** Only a cycle passes `profile`; preview, Start, and Forget never touch the profile files. */
   async function engineFor(slot: StoreSlot, profile: ProfileChannels | null = null): Promise<Engine> {
     return createEngine({
-      connect: () => backend.connect(slot),
+      connect: (key) => backend.connect(slot, key),
       local,
       bookmarks,
       readingList,
@@ -230,7 +234,8 @@ export function startWorker(backend: StoreBackend): void {
       case 'start': {
         const name = message.name.trim().slice(0, NAME_MAX) || DEVICE_NAMES[await platform()];
         const result = await withCycleLock(locks, async (): Promise<StartResult> => {
-          const conn = await backend.connect('candidate');
+          // The probe runs where this key will sync, the place Start is about to join.
+          const conn = await backend.connect('candidate', message.key);
           if (conn.access !== 'ready') return { kind: 'not-ready', store: conn };
           const probe = await conn.store.probe();
           if (probe.kind === 'failed') return { kind: 'not-ready', store: { access: 'failed', label: conn.label, why: probe.why } };
@@ -259,7 +264,9 @@ export function startWorker(backend: StoreBackend): void {
         scheduler.request('apply-deletions');
         return null;
       case 'check-store': {
-        const conn = await backend.connect('current');
+        const me = await local.load();
+        if (me === null) return { access: 'not-set-up' };
+        const conn = await backend.connect('current', me.key);
         if (conn.access !== 'ready') return conn;
         const probe = await conn.store.probe();
         return probe.kind === 'ok' ? statusOf(conn) : { access: 'failed', label: conn.label, why: probe.why };

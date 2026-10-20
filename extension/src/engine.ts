@@ -42,8 +42,11 @@ import { joinCursor, syncLog } from './log-cycle.ts';
 import { syncSnapshot } from './snapshot-cycle.ts';
 
 export type EngineDeps = {
-  /** The chosen store (stores.ts `connectChoice`). Called once at the start of every cycle. */
-  readonly connect: () => Promise<StoreConnection>;
+  /**
+   * The chosen store (stores.ts `connectChoice`) for the sync group `key` names. Called once at the start of
+   * every cycle and in forget with this device's key, and once per preview with the key being previewed.
+   */
+  readonly connect: (key: SyncKey) => Promise<StoreConnection>;
   readonly local: LocalState;
   readonly bookmarks: RegisterChannel<Bookmark>;
   readonly readingList: RegisterChannel<ReadingItem>;
@@ -333,7 +336,7 @@ export function createEngine(deps: EngineDeps): Engine {
     if (loaded === null) return { kind: 'needs-setup', at: now };
     let me: DeviceLocal = loaded;
     const cipher = await cipherFor(me.key);
-    const conn = await deps.connect();
+    const conn = await deps.connect(me.key);
     const fuse = new StoreFuse(conn.access === 'ready' ? conn.store : null);
     const warnings: Warning[] = [];
 
@@ -508,7 +511,7 @@ export function createEngine(deps: EngineDeps): Engine {
    */
   async function preview(key: SyncKey): Promise<JoinPreview> {
     const now = deps.clock.now();
-    const conn = await deps.connect();
+    const conn = await deps.connect(key);
     if (conn.access !== 'ready') return { kind: 'not-ready', store: conn };
     const fuse = new StoreFuse(conn.store);
     const cipher = await cipherFor(key);
@@ -530,7 +533,7 @@ export function createEngine(deps: EngineDeps): Engine {
   async function forget(): Promise<void> {
     const me = await deps.local.load();
     if (me === null) return;
-    const conn = await deps.connect();
+    const conn = await deps.connect(me.key);
     if (conn.access === 'ready') await deleteOwnFiles(conn.store, me);
     await deps.local.clear();
   }
