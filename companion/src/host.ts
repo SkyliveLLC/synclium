@@ -2,11 +2,11 @@
 // profile at any time, and never writes Helium's files: `stage` queues changes and wakes the apply helper.
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { PROTOCOL_VERSION, type HelloReply, type HostProtocol, type HostReply, type HostRequest, type ProfileState } from '../../extension/src/profile-mode.ts';
+import { COMPANION_VERSION, PROTOCOL_VERSION, type HelloReply, type HostProtocol, type HostReply, type HostRequest, type ProfileState } from '../../extension/src/profile-mode.ts';
 import { frame, readFrames } from './framing.ts';
 import { isRecord, parseJsonRecord, valueAt } from './json.ts';
 import type { Log } from './log.ts';
-import { COMPANION_VERSION, profileDir } from './paths.ts';
+import { profileDir } from './paths.ts';
 import { readProfileFiles, syncedRows, webDataPath } from './profile.ts';
 import { loadStore, mergeStaged, overlay, parseAliasPairs, parseStagedChanges, pendingCount, saveStore, withAliases } from './state.ts';
 import { openImmutable } from './webdata.ts';

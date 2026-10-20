@@ -17,7 +17,7 @@ import { historyIndex, historyLocal, indexedLocal, intents, type StoreSlot } fro
 import { parsePlatform, type Platform } from './store-format.ts';
 import { ALARM_MIN_MS, POLL_MINUTES, createScheduler, withCycleLock, type Locks, type Timers, type Trigger, type Wake } from './scheduler.ts';
 import { statusOf, type ProfileChannels, type StoreConnection } from './ports.ts';
-import { DEVICE_NAMES, badgeFor, readShown, storedShown, viewOf, type ProfileStatus, type Shown, type StartResult, type UiMessage, type UiReply, type Wire } from './ui.ts';
+import { DEVICE_NAMES, REOPEN_KEY, badgeFor, readShown, storedShown, viewOf, type ProfileStatus, type Shown, type StartResult, type UiMessage, type UiReply, type Wire } from './ui.ts';
 
 /** Where sync stores its files. stores.ts's `releaseBackend` in release. */
 export type StoreBackend = {
@@ -180,11 +180,23 @@ export function startWorker(backend: StoreBackend): void {
     management.onEnabled.addListener(on('extensions'));
     management.onDisabled.addListener(on('extensions'));
   }
-  chrome.permissions.onAdded.addListener(on('manual'));
+  // Chromium gives connectNative only to contexts that start after the grant, so the extension restarts for it.
+  // The restart closes extension pages; the page that asked left REOPEN_KEY to come back to.
+  chrome.permissions.onAdded.addListener(({ permissions = [] }) => {
+    if (permissions.includes('nativeMessaging') && typeof chrome.runtime.connectNative !== 'function') return chrome.runtime.reload();
+    scheduler.request('manual');
+  });
   chrome.permissions.onRemoved.addListener(on('manual'));
   // New visits need no trigger: the poll scans them. A removal cannot say which visits went (a range delete
   // lists no urls), so it asks for a re-derive of every own day, as a durable intent the engine acknowledges.
   chrome.history.onVisitRemoved.addListener(on('history-removed'));
+
+  void chrome.storage.local.get(REOPEN_KEY).then(async (stored) => {
+    const page: unknown = stored[REOPEN_KEY];
+    if (typeof page !== 'string') return;
+    await chrome.storage.local.remove(REOPEN_KEY);
+    await chrome.tabs.create({ url: chrome.runtime.getURL(page) });
+  });
 
   // Every wake: alarms may not survive a browser restart. `get` first, so a live alarm keeps its schedule.
   void chrome.alarms.get(POLL).then((alarm) => {
@@ -264,6 +276,9 @@ export function startWorker(backend: StoreBackend): void {
         const permission = await chrome.permissions.contains(NATIVE);
         const on = (await local.load())?.profile ?? null;
         if (!permission) return { permission, hello: null, error: null, on };
+        // Granted after this worker started, and the restart on the grant (onAdded) did not happen. Not restarted
+        // from here: a worker that lacked connectNative for another reason would restart on every visit.
+        if (typeof chrome.runtime.connectNative !== 'function') return { permission, hello: null, error: 'Restart Helium to finish allowing the companion.', on };
         try {
           const link = connectCompanion();
           try {

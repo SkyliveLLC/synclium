@@ -186,14 +186,15 @@
           <p id="pm-error" class="note" hidden></p>
           <div id="pm-allow" hidden>
             <button id="pm-grant">Allow the companion</button>
-            <p class="note">Helium asks to let Synclium talk to programs on this computer.</p>
+            <p class="note">Helium asks to let Synclium talk to programs on this computer, then Synclium restarts.</p>
           </div>
           <div id="pm-install" hidden>
-            <p class="note">Install the companion, then check again:</p>
+            <p id="pm-where" class="note"></p>
             <div class="key-row"><code id="pm-command" class="key"></code><button id="pm-copy">Copy</button></div>
-            <p class="note">The binary is companion/dist/helium-sync-companion from the repo build.</p>
+            <p class="note">It downloads the <a id="pm-download" target="_blank" rel="noopener">companion for this computer</a> from Synclium's <a id="pm-release" target="_blank" rel="noopener">GitHub release</a>, open source like the extension, and registers it with Helium.</p>
             <button id="pm-check">Check again</button>
           </div>
+          <p id="pm-unsupported" class="note" hidden>The companion runs on macOS, Windows, and Linux only.</p>
           <div id="pm-pick" hidden>
             <label id="pm-profile-row" class="check" hidden>Profile <select id="pm-profile" aria-label="Helium profile"></select></label>
             <button id="pm-on" class="primary">Turn on</button>

@@ -42,7 +42,8 @@ function isReply<K extends keyof HostProtocol>(kind: K, reply: unknown): reply i
 /**
  * Open one port to the companion. Requests go one at a time and each takes the next reply. A timeout, a
  * disconnect, or an `error` reply rejects; after a timeout or a disconnect every later request rejects too.
- * Throws at once when `nativeMessaging` is not granted (connectNative exists only after the grant).
+ * Throws at once when `nativeMessaging` is not granted, or was granted after this context started: connectNative
+ * exists only in contexts that start after the grant (background.ts restarts the extension for it).
  */
 export function connectCompanion(): CompanionLink & { readonly close: () => void } {
   if (typeof chrome.runtime.connectNative !== 'function') throw new Error('Synclium is not allowed to talk to the companion yet.');

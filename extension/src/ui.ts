@@ -71,6 +71,8 @@ export async function ask<M extends UiMessage>(message: M): Promise<UiReply<M>> 
 // ---------- What the worker shows ----------
 
 export const SHOWN_KEY = 'shown';
+/** chrome.storage.local: the page to open again after the extension restarts for a grant (background.ts). */
+export const REOPEN_KEY = 'reopen';
 
 /**
  * Full profile mode as the last cycle found it. `unavailable`: the mode is on here but the companion could not

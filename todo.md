@@ -52,25 +52,28 @@
 - [x] Unit 2 (adapters, IndexedDB, worker, UI, build) verified: typecheck 0, 69/69, build ok, screenshots reviewed
 - [x] Unit 3 folder-store.ts verified: typecheck 0, 80/80, builds ok
 - [x] E2E two-device run passed (setup, join preview, no duplicates, From B crossed, allow-on-every-visit persisted)
-- [ ] Popup paused state: make Allow access the primary button
-- [ ] Unattended sync after restart without opening popup: unverified in e2e (popup open triggers sync-now)
+- [x] Popup paused state: make Allow access the primary button
+- [x] Unattended sync after restart without opening popup: real Linux Helium, WebDAV: a restarted device picked up a peer's bookmark 4s after launch, untouched; an idle device by poll in 290s
 - [x] Unit 4 WebDAV store: typecheck 0, 95/95, wsgidav store + engine run, e2e/webdav.mjs 11/11 and e2e/folder-store.mjs 19/19 in isolated scratch Helium
-- [ ] WebDAV permission bubble (Connect, Allow access after revoke): needs a human click
+- [x] WebDAV permission bubble (Connect, Allow access after revoke): real clicks on Linux Helium: Deny reads as "needs your permission", Allow connects; after a revoke the popup's Allow access leads to the page and sync resumes
 
 ## Round 3 roadmap (Conan 2026-10-06)
 1. [x] Encryption: generated sync key, mandatory, every file sealed (manifests too). Typecheck 0, 85/85, both builds ok.
-   - [ ] Verify in real Helium: two-device e2e with the key step (paste key on B, wrong key refused)
+   - [x] Verify in real Helium: two-device e2e with the key step (paste key on B, wrong key refused): another valid key and a one-character typo both refused, the right key joins; files on the server are ciphertext
 2. [x] Reading list: register type, ids from urls (P8 confirmed the API). Unit + engine tests.
 3. [x] Extensions list: snapshot model, optional `management`, Extensions page with Add -> CWS. Unit + engine tests.
-   - [ ] Real-browser check of the Extensions page (permission prompt needs a click)
+   - [x] Real-browser check of the Extensions page (permission prompt needs a click)
 4. [ ] Opt-in full profile mode (Conan: unprotected settings + custom search engines + addresses; single binary, macOS first; write after quit)
    - [x] Contract: extension/src/profile-mode.ts; design section in DESIGN.md
    - [x] Companion (companion/): host, apply helper, install, SEA build; 14/14 tests; scratch check (stage while running writes nothing, quit applies 4/4, relaunch keeps, no reset)
    - [x] Extension side: channels, engine off/on, Advanced UI; 99/99 tests
    - [x] Integration e2e (extension/e2e/profile-mode.mjs): 15/15 on scratch; courier.mjs regression 14/14
-   - [ ] Real-browser check of the Advanced opt-in UI and the Extensions page (permission prompts need a click)
-   - [ ] Gatekeeper: the binary is ad-hoc signed only; a downloaded copy needs Developer ID signing + notarization (Skylive LLC?)
-   - [ ] Windows/Linux paths for the companion (macOS only now)
+   - [x] Real-browser check of the Advanced opt-in UI and the Extensions page (permission prompts need a click). Found and fixed: connectNative is missing in a worker that saw the grant (the extension now restarts and reopens Advanced); Helium 0.19.4's Web Data 156 was refused
+   - [ ] Gatekeeper: the binary is ad-hoc signed only. The install command downloads with curl (no quarantine), so it runs; a browser download would need Developer ID signing + notarization (Conan 2026-10-20: not yet)
+   - [x] Windows/Linux paths for the companion: Linux verified on real Helium; Windows (registry install, lockfile, cmd.exe launcher) unit-tested on CI only, unverified in a real Helium
+   - [x] Distribution: release-companion.yml publishes six binaries on a `companion-v*` tag; Advanced shows the install command
+   - [ ] Publish `companion-v0.1.0` before the store upload
+   - [ ] Verify on real Windows Helium
 5. [x] Google Drive store (drive-store.ts): sign in on each device, folder found by every device. Typecheck 0, 121/121.
    - [ ] Create the Google Cloud OAuth client (Web application, drive.file, redirect per extension id) and set GOOGLE_CLIENT_ID
    - [ ] Verify in real Helium: two devices sign in, sync, and silent token renewal after an hour and after a restart

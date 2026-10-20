@@ -29,8 +29,13 @@ jobs:
           path: extension/synclium-*.zip
 
   companion:
-    # The companion is macOS-only for now (paths.ts).
-    runs-on: macos-latest
+    # Every system the companion ships for. The build is the release build (release-companion.yml), so a break in
+    # the per-system build steps shows here first.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     defaults:
       run:
         working-directory: companion
@@ -44,3 +49,4 @@ jobs:
       - run: npm ci
       - run: npm run typecheck
       - run: npm test
+      - run: npm run build

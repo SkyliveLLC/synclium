@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
+import { once } from 'node:events';
 import { readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { hostname } from 'node:os';
 import { join } from 'node:path';
@@ -34,7 +35,7 @@ const SYNCED_DOCS = item('22222222-2222-4222-8222-222222222222');
 const wiki: SearchEngine = { ...docsEngine, name: 'Wiki', keyword: 'w', url: 'https://wiki.example.test/?s={searchTerms}', alternateUrls: ['https://wiki.example.test/#q={searchTerms}'] };
 const robin: Address = { kind: 'address', languageCode: 'en', label: 'Home', tokens: [[3, 'Robin', 1], [33, 'Denver', 4]] };
 
-test('waits while SingletonLock names a live pid, applies once it is dead', () => {
+test('waits while SingletonLock names a live pid, applies once it is dead', { skip: process.platform === 'win32' && 'macOS and Linux' }, () => {
   const fixture = makeFixture();
   stage(fixture, { settings: [{ id: item('download.prompt_for_download'), before: { kind: 'pref', value: false }, after: { kind: 'pref', value: true } }] });
   const before = readFileSync(join(fixture.profileDir, 'Preferences'), 'utf8');
@@ -46,6 +47,20 @@ test('waits while SingletonLock names a live pid, applies once it is dead', () =
   lockTo(fixture, deadPid());
   assert.deepEqual(applyOnce(fixture.home, fixture.userDataDir, quiet), { applied: 1, skipped: 0 });
   assert.deepEqual(readPrefs(fixture), { ...PREFERENCES, download: { ...PREFERENCES.download, prompt_for_download: true } });
+});
+
+test('waits while Helium holds lockfile, applies once a crash leaves it behind', { skip: process.platform !== 'win32' && 'Windows only' }, async () => {
+  const fixture = makeFixture();
+  stage(fixture, { settings: [{ id: item('download.prompt_for_download'), before: { kind: 'pref', value: false }, after: { kind: 'pref', value: true } }] });
+  // What Chromium does: open lockfile for writing and share it for reading only. Closing without deleting it is a crash.
+  const lockfile = join(fixture.userDataDir, 'lockfile');
+  const holder = spawn('powershell.exe', ['-NoProfile', '-Command', `$f = [System.IO.File]::Open('${lockfile}', 'OpenOrCreate', 'ReadWrite', 'Read'); 'held'; [Console]::In.ReadLine() | Out-Null; $f.Close()`]);
+  await once(holder.stdout, 'data');
+
+  assert.equal(applyOnce(fixture.home, fixture.userDataDir, quiet), 'running');
+  holder.stdin.end('\n');
+  await once(holder, 'exit');
+  assert.deepEqual(applyOnce(fixture.home, fixture.userDataDir, quiet), { applied: 1, skipped: 0 });
 });
 
 test('writes changes whose before still holds, skips ones the user changed, keeps every other key', () => {
