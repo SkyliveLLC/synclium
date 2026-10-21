@@ -147,7 +147,7 @@ A key nobody has used is an empty vault, so the server cannot tell a mistyped ke
 
 The API is an object store at `https://synclium.skylive.world` behind `Authorization: Bearer <token>`. `GET /v1/o/<prefix>/` lists direct children as `{"names": [...]}`, and an unknown vault lists `[]`. `GET`, `PUT`, and `DELETE /v1/o/<key>` use content-hash ETags, with a 304 for a matching `If-None-Match`, and a delete succeeds whether or not the object was there. `GET /v1/health` needs no token. The server answers CORS for extension origins, so the cloud needs no host permission. To the extension, 429 and 5xx are `unreachable` and 413 and 507 are `rejected`. It is never `missing` or `needs-permission`.
 
-Limits: 8 MiB per object, 64 MiB and 4,096 objects per vault, a request bucket per client IP, 20 new vaults per IP per day, and a free-disk guard. A vault with no write for 180 days is purged. Requests are not logged.
+Limits: 8 MiB per object, 64 MiB and 4,096 objects per vault, a request bucket per client IP, 20 new vaults per IP per day, and a free-disk guard. A vault with no write for 180 days is purged. The server logs no requests; the Traefik proxy in front of it keeps its usual access log (time, IP, path, user agent), rotated by size, about two weeks.
 
 The server is a cache of what devices hold, so it heals itself. After a wipe, each device's own manifest reads as missing, and its next cycle re-puts every file it holds and the manifest at seq + 1, which peers accept. A device back after a purge has been idle past 90 days and rejoins anyway. Forget deletes a device's files from its vault right away.
 
