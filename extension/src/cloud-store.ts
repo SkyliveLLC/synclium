@@ -29,7 +29,7 @@ const messageOf = (error: unknown): string => (error instanceof Error ? error.me
 function failureOf(status: number): StoreFailure {
   if (status === 413) return { kind: 'rejected', detail: 'a file is too large' };
   if (status === 507) return { kind: 'rejected', detail: 'this sync group is out of space' };
-  if (status === 429) return { kind: 'unreachable', detail: 'busy, retrying in a few minutes' };
+  if (status === 429) return { kind: 'unreachable', detail: 'busy; Synclium keeps retrying' };
   if (status >= 500) return { kind: 'unreachable', detail: `server error ${status}` };
   // 400 and 401 are this build's bug (a key outside the grammar, a malformed token): said plainly.
   return { kind: 'rejected', detail: `HTTP ${status}` };

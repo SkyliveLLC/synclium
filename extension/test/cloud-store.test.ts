@@ -185,7 +185,7 @@ test('failures become the popup words; the store is never missing and never need
   const store = storeOn(cloud);
   const manifest = keys.manifest(A);
   const expected: readonly (readonly [number, StoreFailure])[] = [
-    [429, { kind: 'unreachable', detail: 'busy, retrying in a few minutes' }],
+    [429, { kind: 'unreachable', detail: 'busy; Synclium keeps retrying' }],
     [500, { kind: 'unreachable', detail: 'server error 500' }],
     [503, { kind: 'unreachable', detail: 'server error 503' }],
     [413, { kind: 'rejected', detail: 'a file is too large' }],

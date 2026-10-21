@@ -34,7 +34,9 @@ Synclium Cloud sees:
 - your devices' IDs,
 - file names, which show which days have history,
 - file sizes, and when files are written and read,
-- the IP address of each request, used in memory for rate limits and not logged by Synclium Cloud.
+- the IP address of each request, used in memory for rate limits.
+
+The web server in front of Synclium Cloud keeps a standard access log for operating the server: the time, IP address, browser user agent, and path of each request (paths contain device IDs and history dates, never your token or file contents). The log is rotated by size and old entries are deleted, usually within two weeks. The Synclium Cloud program itself stores no IP addresses.
 
 It never sees your sync key, your device names, or anything inside your files.
 
