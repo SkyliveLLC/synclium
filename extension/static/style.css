@@ -110,8 +110,8 @@ kbd { font: 12px ui-monospace, monospace; border: 1px solid var(--line); border-
 .hero .note { margin: 0 0 0 22px; }
 
 /*
- * The device map: this device, one link to the folder, and a branch to every other device. Mirrors how sync
- * works: no server, every device reads and writes the same folder. Links take the status tone; idle devices
+ * The device map: this device, one link to the store, and a branch to every other device. Mirrors how sync
+ * works: every device reads and writes the same store, and none talks to another. Links take the status tone; idle devices
  * hang off a dashed branch.
  */
 .map {

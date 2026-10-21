@@ -1,14 +1,23 @@
-// The sync key: 256 random bits every device in one sync folder shares. The first device mints it, the user
-// pastes it on the others, and it never enters the folder. Files carry only `keyId`, a fingerprint derived from
+// The sync key: 256 random bits every device in one sync group shares. The first device mints it, the user
+// pastes it on the others, and it never enters the store. Files carry only `keyId`, a fingerprint derived from
 // it, so a reader tells "sealed with another key" apart from "torn".
 //
 // Derivation: HKDF-SHA256 over the key, one `info` per purpose. AES-256-GCM seals file bodies; the key id is 64
-// bits, enough to tell sync groups apart and useless for guessing the key.
+// bits, enough to tell sync groups apart and useless for guessing the key; the vault token (Synclium Cloud's
+// bearer credential) is 256 bits under its own label, so the server holds neither the key nor anything that
+// opens a file. Labels never change: a new label is a new purpose, and a changed one orphans what it named.
 import type { Brand } from './model.ts';
 import type { Cipher } from './store-format.ts';
 
 /** 52 Crockford base32 digits, uppercase, no separators: 256 bits and 4 zero bits. The form DeviceLocal holds. */
 export type SyncKey = Brand<string, 'SyncKey'>;
+
+/**
+ * Synclium Cloud's bearer token for a sync group: base64url, unpadded, of 32 HKDF bytes, so 43 characters. Every
+ * device with the key derives the same token, so the same vault. Branded so cloud-store.ts takes this and never a
+ * SyncKey: the module that talks to the server cannot send the key.
+ */
+export type VaultToken = Brand<string, 'VaultToken'>;
 
 const ALPHABET = '0123456789ABCDEFGHJKMNPQRSTVWXYZ';
 const KEY_BYTES = 32;
@@ -76,10 +85,12 @@ export function formatSyncKey(key: SyncKey): string {
   return [PREFIX, ...(key.match(/.{4}/g) ?? [])].join('-');
 }
 
+const purpose = (info: string): HkdfParams => ({ name: 'HKDF', hash: 'SHA-256', salt: new Uint8Array(0), info: utf8.encode(info) });
+const masterOf = (key: SyncKey): Promise<CryptoKey> => crypto.subtle.importKey('raw', toBytes(key), 'HKDF', false, ['deriveKey', 'deriveBits']);
+
 /** The AES-256-GCM cipher for a key. Sealed bytes are iv ‖ ciphertext ‖ tag; `aad` is authenticated, not stored. */
 export async function cipherFor(key: SyncKey): Promise<Cipher> {
-  const master = await crypto.subtle.importKey('raw', toBytes(key), 'HKDF', false, ['deriveKey', 'deriveBits']);
-  const purpose = (info: string): HkdfParams => ({ name: 'HKDF', hash: 'SHA-256', salt: new Uint8Array(0), info: utf8.encode(info) });
+  const master = await masterOf(key);
   const aes = await crypto.subtle.deriveKey(purpose('helium-sync file key v1'), master, { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
   const id = new Uint8Array(await crypto.subtle.deriveBits(purpose('helium-sync key id v1'), master, 64));
   return {
@@ -102,4 +113,14 @@ export async function cipherFor(key: SyncKey): Promise<Cipher> {
       }
     },
   };
+}
+
+const isVaultToken = (s: string): s is VaultToken => /^[A-Za-z0-9_-]{43}$/.test(s);
+
+/** The key's Synclium Cloud vault token. */
+export async function vaultTokenFor(key: SyncKey): Promise<VaultToken> {
+  const bits = new Uint8Array(await crypto.subtle.deriveBits(purpose('helium-sync cloud vault v1'), await masterOf(key), 256));
+  const token = btoa(String.fromCharCode(...bits)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  if (!isVaultToken(token)) throw new Error(`derived a malformed vault token: ${token.length} characters`);
+  return token;
 }

@@ -203,6 +203,19 @@ test('preview reports the join without writing sync state or the store', async (
   assert.deepEqual(await z.preview(), { kind: 'not-ready', store: { access: 'failed', label: 'memory', why: { kind: 'missing' } } });
 });
 
+test('preview through a store that fails mid-read is not ready, never an empty store', async () => {
+  const world = new World('icloud');
+  const x = world.add('X', { browser: ground() });
+  await x.setup();
+  await x.cycle();
+  const z = world.add('Z', { browser: ground() });
+  z.pull();
+  z.attached.knobs.unreachable = true;
+  assert.deepEqual(await z.preview(), { kind: 'not-ready', store: { access: 'failed', label: 'memory', why: { kind: 'unreachable', detail: 'memory store offline' } } });
+  z.attached.knobs.unreachable = false;
+  assert.equal((await z.preview()).kind, 'joining', 'back online, the same preview finds X');
+});
+
 test('preview under another key asks for the folder\'s key and reads nothing it cannot open', async () => {
   const world = new World('icloud');
   const x = world.add('X', { browser: ground() });

@@ -1,5 +1,5 @@
 // Compiles src/ with tsc and copies static/ beside it. No bundler: Chromium loads ES modules natively.
-//   node scripts/build.mjs          release -> dist/      (folder-store.ts: the folder the user picks)
+//   node scripts/build.mjs          release -> dist/      (stores.ts: the store the user chose)
 //   node scripts/build.mjs --dev    dev     -> dist-dev/  (dev-store.ts: chrome.storage.local as the "folder")
 // The release check fails the build if any dev-only module reached dist/, for example through a stray import.
 import { execFileSync } from 'node:child_process';

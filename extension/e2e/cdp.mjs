@@ -6,9 +6,10 @@ export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /**
  * The scratch copy, never /Applications/Helium.app: the everyday browser may be running from that bundle, and a
- * second instance of it shares its app identity and keychain item.
+ * second instance of it shares its app identity and keychain item. `HELIUM` overrides it, for example with a
+ * Linux build's helium-wrapper.
  */
-export const SCRATCH_HELIUM = '/tmp/helium-sync-scratch/HeliumScratch.app/Contents/MacOS/Helium';
+export const SCRATCH_HELIUM = process.env.HELIUM ?? '/tmp/helium-sync-scratch/HeliumScratch.app/Contents/MacOS/Helium';
 
 export function launch({ profile, port, ext, log }) {
   const child = spawn(SCRATCH_HELIUM, [

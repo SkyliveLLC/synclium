@@ -3,8 +3,8 @@
 //   popup.html  status at a glance, [Sync now], and the one button the status calls for
 //   app.html    (options page, a tab) setup, status detail, history search, extensions, review, advanced
 //               (full profile mode's opt-in lives in advanced)
-// Anything that needs a user gesture (the folder picker, a folder re-grant, a WebDAV host permission, the
-// optional `management` and `nativeMessaging` grants) happens in app.html, never the popup: the picker and
+// Anything that needs a user gesture (the folder picker, a folder re-grant, a WebDAV host permission, Google's
+// sign-in, the optional `management` and `nativeMessaging` grants) happens in app.html, never the popup: the picker and
 // Chromium's permission bubbles take focus, the popup closes, and a request tied to a closed frame is cancelled.
 //
 // Status flows one way. The worker writes `Shown` to chrome.storage.local; pages render it and re-render on
@@ -24,7 +24,7 @@ export const DEVICE_NAMES = { mac: 'Mac', win: 'Windows PC', linux: 'Linux PC' }
 export type StartResult =
   | { readonly kind: 'started' }
   | { readonly kind: 'not-ready'; readonly store: StoreStatus }
-  /** Devices in the folder sync under another key. */
+  /** Devices in the store sync under another key. */
   | { readonly kind: 'wrong-key' };
 
 /** Page -> worker protocol: request fields and reply, one entry per message. Single source for both types below. */
@@ -111,8 +111,8 @@ export function storedShown(shown: Shown): { readonly [SHOWN_KEY]: Stored } {
 }
 
 /**
- * What the popup shows. One variant per thing the user can act on. The same variants cover every P7 rung and
- * WebDAV; only which failure appears, and how often, changes.
+ * What the popup shows. One variant per thing the user can act on. The same variants cover every store; only
+ * which failure appears, and how often, changes.
  */
 export type StatusView =
   | { readonly kind: 'setup' }
@@ -214,7 +214,7 @@ export function actionFor(why: StoreFailure): Action {
     case 'needs-permission':
       return { label: 'Allow access', opens: 'app.html#allow' };
     case 'missing':
-      return { label: 'Choose folder', opens: 'app.html#setup' };
+      return { label: 'Choose again', opens: 'app.html#setup' };
     case 'unreachable':
     case 'rejected':
       return { label: 'Retry', opens: null };
@@ -260,7 +260,7 @@ export function ago(ms: number): string {
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
 function failureSentence(label: string, why: StoreFailure): string {
-  const where = label === '' ? 'the sync folder' : label;
+  const where = label === '' ? 'where you sync' : label;
   switch (why.kind) {
     case 'needs-permission':
       return `Paused until you allow access to ${where}.`;
@@ -401,7 +401,7 @@ export function historyFact(outcome: LogOutcome): Fact {
     case 'synced': {
       const parts = [
         `${plural(outcome.publishedDays, 'day')} shared from here`,
-        outcome.unpublishedDays > 0 ? `${outcome.unpublishedDays} waiting for the folder` : '',
+        outcome.unpublishedDays > 0 ? `${outcome.unpublishedDays} waiting to upload` : '',
         outcome.pulledDays > 0 ? `${outcome.pulledDays} updated from other devices` : '',
       ];
       const detail = `${parts.filter((part) => part !== '').join(', ')}.`;
@@ -414,14 +414,14 @@ export function historyFact(outcome: LogOutcome): Fact {
   }
 }
 
-export function folderFact(store: StoreStatus): Fact {
+export function storeFact(store: StoreStatus): Fact {
   switch (store.access) {
     case 'ready':
       return { value: store.label, detail: 'Connected.' };
     case 'failed':
       return { value: store.label, detail: failureSentence(store.label, store.why) };
     case 'not-set-up':
-      return { value: 'No folder', detail: 'Choose one in setup.' };
+      return { value: 'Not set up', detail: 'Choose where to sync in setup.' };
     default: {
       const unreachable: never = store;
       return unreachable;
@@ -433,9 +433,9 @@ export function folderFact(store: StoreStatus): Fact {
 export function previewSentence(preview: JoinPreview): string {
   switch (preview.kind) {
     case 'not-ready':
-      return preview.store.access === 'failed' ? failureSentence(preview.store.label, preview.store.why) : 'Choose Google Drive, a folder, or a WebDAV server first.';
+      return preview.store.access === 'failed' ? failureSentence(preview.store.label, preview.store.why) : 'Choose where to sync first.';
     case 'first-device':
-      return `New sync folder. ${plural(preview.bookmarks, 'bookmark')} will be shared.`;
+      return `New sync group. ${plural(preview.bookmarks, 'bookmark')} will be shared.`;
     case 'needs-key':
       return `${plural(preview.devices, 'device')} already ${preview.devices === 1 ? 'syncs' : 'sync'} here. Enter the sync key from one of them.`;
     case 'joining': {
@@ -449,19 +449,53 @@ export function previewSentence(preview: JoinPreview): string {
   }
 }
 
-/** What setup's key step says under the key. `entered` is what the key field holds: nothing, not a key, or a key. */
-export function keyNote(preview: JoinPreview, entered: 'nothing' | 'not-a-key' | 'key'): string {
+/** What setup's key field holds. The visit key the page fills in by itself counts as nothing entered. */
+export type KeyEntry = 'nothing' | 'not-a-key' | 'key';
+
+/** Setup's key step and Start, decided from the preview and the key field. app.ts only renders it. */
+export type SetupView = {
+  /** The visit key, with Copy. Only for a first device whose field is empty. */
+  readonly newKey: boolean;
+  /** The paste field, offered as soon as a store is chosen: joining never depends on what the store shows. */
+  readonly paste: boolean;
+  readonly keyNote: string;
+  /** What Start will do, or why setup can't go on. '' hides the line. */
+  readonly sentence: string;
+  readonly startable: boolean;
+  /** Preview again after this long: the device whose key was pasted may still be publishing. */
+  readonly recheckMs: number | null;
+};
+
+const NOT_A_KEY = "That isn't a sync key. It starts with HSK- and has 13 groups of 4 characters.";
+const RECHECK_MS = 10_000;
+
+/**
+ * A typed key only ever joins. A store addressed by the key, like Synclium Cloud, cannot tell a mistyped key from
+ * a new one (both find no devices), so a new sync group always uses the visit key: this device's own, or a fresh
+ * one. The visit key can join too, when this device moves to a store its group already uses.
+ */
+export function setupView(preview: JoinPreview, entered: KeyEntry): SetupView {
+  const base = { newKey: false, paste: true, keyNote: '', sentence: '', startable: false, recheckMs: null } as const;
   switch (preview.kind) {
     case 'not-ready':
-      return '';
+      // Not chosen yet: step 1 says what to do. Chosen but failing: say why.
+      return { ...base, paste: false, sentence: preview.store.access === 'failed' ? previewSentence(preview) : '' };
     case 'first-device':
-      return 'Only devices with this key can read the folder. You can show it again under Advanced.';
+      if (entered === 'nothing')
+        return { ...base, newKey: true, keyNote: 'Only devices with this key can read what Synclium stores. You can show it again in Settings.', sentence: previewSentence(preview), startable: true };
+      if (entered === 'not-a-key') return { ...base, keyNote: NOT_A_KEY };
+      return {
+        ...base,
+        keyNote: `No device syncs through ${preview.label} with this key yet. Check it against Settings, then Show sync key, on your other device. If that device is still starting, this updates by itself.`,
+        recheckMs: RECHECK_MS,
+      };
     case 'needs-key':
-      if (entered === 'nothing') return 'On one of your other devices, open Synclium, then Settings, then Show sync key.';
-      if (entered === 'not-a-key') return "That isn't a sync key. It starts with HSK- and has 13 groups of 4 characters.";
-      return "That key doesn't match the devices in this folder.";
+      if (entered === 'nothing') return { ...base, keyNote: 'On one of your other devices, open Synclium, then Settings, then Show sync key.' };
+      if (entered === 'not-a-key') return { ...base, keyNote: NOT_A_KEY };
+      return { ...base, keyNote: `That key doesn't match the devices in ${preview.label}.` };
     case 'joining':
-      return 'The key matches.';
+      if (entered === 'not-a-key') return { ...base, keyNote: NOT_A_KEY };
+      return { ...base, keyNote: entered === 'nothing' ? "This device's sync key matches." : 'The key matches.', sentence: previewSentence(preview), startable: true };
     default: {
       const unreachable: never = preview;
       return unreachable;
@@ -481,9 +515,9 @@ export function warningSentence(warning: Warning, nameOf: (device: string) => st
     case 'newer-version':
       return `${nameOf(warning.peer)} runs a newer Synclium; ${warning.file} is skipped until this one updates.`;
     case 'other-key':
-      return 'A device in the sync folder uses a different sync key. It is ignored.';
+      return 'A device syncing in the same place uses a different sync key. It is ignored.';
     case 'foreign-file':
-      return `An unexpected file "${warning.name}" is in the sync folder. It is ignored.`;
+      return `An unexpected file "${warning.name}" is among your devices' files. It is ignored.`;
     case 'rejoined':
       return 'This device was away for a long time and joined again as a new device.';
     default: {

@@ -28,8 +28,13 @@ import type { DriveConfig } from './drive-store.ts';
 /** `candidate` is what setup chose; `current` is what sync uses. Start promotes one to the other. */
 export type StoreSlot = 'current' | 'candidate';
 
-/** Where a device syncs: the folder it picked, a WebDAV server with its credentials, or a folder in Google Drive. */
+/**
+ * Where a device syncs: Synclium Cloud, the folder it picked, a WebDAV server with its credentials, or a folder in
+ * Google Drive. Synclium Cloud carries nothing: its server is a build constant (cloud-store.ts) and its vault
+ * follows from the sync key DeviceLocal holds, so nothing can drift from the key and a joining device needs only it.
+ */
 export type StoreChoice =
+  | { readonly kind: 'cloud' }
   | { readonly kind: 'folder'; readonly handle: FileSystemDirectoryHandle }
   | { readonly kind: 'webdav'; readonly config: WebdavConfig }
   | { readonly kind: 'drive'; readonly config: DriveConfig };

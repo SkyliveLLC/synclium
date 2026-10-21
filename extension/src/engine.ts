@@ -42,8 +42,11 @@ import { joinCursor, syncLog } from './log-cycle.ts';
 import { syncSnapshot } from './snapshot-cycle.ts';
 
 export type EngineDeps = {
-  /** The chosen store (stores.ts `connectChoice`). Called once at the start of every cycle. */
-  readonly connect: () => Promise<StoreConnection>;
+  /**
+   * The chosen store (stores.ts `connectChoice`) for the sync group `key` names. Called once at the start of
+   * every cycle and in forget with this device's key, and once per preview with the key being previewed.
+   */
+  readonly connect: (key: SyncKey) => Promise<StoreConnection>;
   readonly local: LocalState;
   readonly bookmarks: RegisterChannel<Bookmark>;
   readonly readingList: RegisterChannel<ReadingItem>;
@@ -153,7 +156,7 @@ export type Warning =
   /** A peer runs a newer envelope format, or a newer version of a log type. Its file is skipped. */
   | { readonly kind: 'newer-version'; readonly peer: DeviceId; readonly file: string; readonly version: number }
   | { readonly kind: 'foreign-file'; readonly name: string }
-  /** A device in the folder seals with a different sync key. It is not a peer; its name is unreadable. */
+  /** A device in the store seals with a different sync key. It is not a peer; its name is unreadable. */
   | { readonly kind: 'other-key'; readonly peer: DeviceId }
   | { readonly kind: 'rejoined'; readonly previous: DeviceId };
 
@@ -163,6 +166,7 @@ export type PeerExtensions = { readonly device: DeviceId; readonly name: string;
 
 /** Setup's second screen. Turns the silent first-join adoption into something the user sees before Start. */
 export type JoinPreview =
+  /** Not set up, not usable, or it failed during the preview. */
   | { readonly kind: 'not-ready'; readonly store: StoreStatus }
   | { readonly kind: 'first-device'; readonly label: string; readonly bookmarks: number }
   /** Devices sync here under another key, and none under this one. Setup asks for theirs. */
@@ -333,7 +337,7 @@ export function createEngine(deps: EngineDeps): Engine {
     if (loaded === null) return { kind: 'needs-setup', at: now };
     let me: DeviceLocal = loaded;
     const cipher = await cipherFor(me.key);
-    const conn = await deps.connect();
+    const conn = await deps.connect(me.key);
     const fuse = new StoreFuse(conn.access === 'ready' ? conn.store : null);
     const warnings: Warning[] = [];
 
@@ -504,23 +508,27 @@ export function createEngine(deps: EngineDeps): Engine {
 
   /**
    * The fetch and the bookmark merge as a fresh device. Only the channel's minted ids are written, as a real first
-   * cycle would. Peers are the devices that open with `key`; any others only make it `needs-key`.
+   * cycle would. Peers are the devices that open with `key`; any others only make it `needs-key`. A store error
+   * trips the fuse and leaves unread devices out, so a preview that hit one is `not-ready`: an outage must never
+   * read as an empty store.
    */
   async function preview(key: SyncKey): Promise<JoinPreview> {
     const now = deps.clock.now();
-    const conn = await deps.connect();
+    const conn = await deps.connect(key);
     if (conn.access !== 'ready') return { kind: 'not-ready', store: conn };
     const fuse = new StoreFuse(conn.store);
     const cipher = await cipherFor(key);
     const self = (await deps.local.load())?.device ?? mintDeviceId();
     const warnings: Warning[] = [];
     const peers = await fetchPeers(fuse, cipher, self, new Map(), warnings);
+    if (fuse.failure !== null) return { kind: 'not-ready', store: statusOf(conn, fuse) };
     const others = warnings.filter((w) => w.kind === 'other-key').length;
     if (peers.size === 0 && others > 0) return { kind: 'needs-key', label: conn.label, devices: others };
     const live = livePeers(peers, now, policy);
     const me: DeviceLocal = { ...freshDeviceLocal(self, { name: '', historyOn: true, key }, joinCursor(now, history.retentionDays)), peers };
     const ctx: CycleContext = { me, store: fuse, live, cipher, now, budget: { expired: () => true }, policy };
     const step = await syncRegisters(ctx, bookmarks, deps.bookmarks, null, { force: false, commit: async () => {}, dryRun: true });
+    if (fuse.failure !== null) return { kind: 'not-ready', store: statusOf(conn, fuse) };
     if (live.size === 0) return { kind: 'first-device', label: conn.label, bookmarks: step.adopted.toPublish };
     let historyDays = 0;
     for (const manifest of live.values()) for (const rel of manifest.files.keys()) if (parseRel(rel)?.kind === 'shard') historyDays++;
@@ -530,7 +538,7 @@ export function createEngine(deps: EngineDeps): Engine {
   async function forget(): Promise<void> {
     const me = await deps.local.load();
     if (me === null) return;
-    const conn = await deps.connect();
+    const conn = await deps.connect(me.key);
     if (conn.access === 'ready') await deleteOwnFiles(conn.store, me);
     await deps.local.clear();
   }

@@ -55,7 +55,7 @@ const A = await device('A', 9351);
 await A.worker.eval(`chrome.bookmarks.create({ parentId: '1', title: 'From A', url: 'https://example.com/a' })`);
 const a = await setUp(A, 'Device A', '/tmp/hs-dav/shots/1-setup-A.png');
 check(a.label === 'Store: Helium Sync on 127.0.0.1:8765', 'A connected to the server', a.label);
-check(a.preview.startsWith('New sync folder.'), 'A preview is a new store', a.preview);
+check(a.preview.startsWith('New sync group.'), 'A preview is a new store', a.preview);
 check(a.report.store.access === 'ready', 'A cycle ran with the store ready', a.report.store);
 check(/^HSK-/.test(a.key), 'A shows a new sync key', a.key);
 check(existsSync(`${ROOT}/devices/${a.report.device}/manifest.json`), 'A published its manifest to the server');

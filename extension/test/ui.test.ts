@@ -1,8 +1,8 @@
 // The popup's view model: which state the user sees, which button it offers, and whether the badge asks for attention.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { badgeFor, bookmarksFact, historyFact, keyNote, previewSentence, primaryAction, profileSentence, statusSentence, toneOf, viewOf, type Shown } from '../src/ui.ts';
-import type { SyncReport } from '../src/engine.ts';
+import { badgeFor, bookmarksFact, historyFact, previewSentence, primaryAction, profileSentence, setupView, statusSentence, storeFact, toneOf, viewOf, type KeyEntry, type SetupView, type Shown } from '../src/ui.ts';
+import type { JoinPreview, SyncReport } from '../src/engine.ts';
 import { deviceId } from './support/memory-local.ts';
 
 type Cycle = Extract<SyncReport, { kind: 'cycle' }>;
@@ -97,12 +97,49 @@ test('the dashboard facts name what the last sync did', () => {
   assert.equal(historyFact({ kind: 'off' }).value, 'Off');
 });
 
-test('the key step tells a joining device where its key is, and why a pasted one is refused', () => {
-  const needs = { kind: 'needs-key', label: 'Helium Sync', devices: 2 } as const;
-  assert.equal(previewSentence(needs), '2 devices already sync here. Enter the sync key from one of them.');
-  assert.match(keyNote(needs, 'nothing'), /Show sync key/);
-  assert.match(keyNote(needs, 'not-a-key'), /isn't a sync key/);
-  assert.match(keyNote(needs, 'key'), /doesn't match/);
+test('setup decides the key step from the preview and the key field: a typed key only ever joins', () => {
+  const unchosen: JoinPreview = { kind: 'not-ready', store: { access: 'not-set-up' } };
+  const down: JoinPreview = { kind: 'not-ready', store: { access: 'failed', label: 'Synclium Cloud', why: { kind: 'unreachable', detail: 'Failed to fetch' } } };
+  const empty: JoinPreview = { kind: 'first-device', label: 'Synclium Cloud', bookmarks: 512 };
+  const others: JoinPreview = { kind: 'needs-key', label: 'Helium Sync', devices: 2 };
+  const joining: JoinPreview = { kind: 'joining', label: 'Synclium Cloud', peers: ['Mac'], bookmarks: { matched: 498, toAdd: 14, toPublish: 37 }, historyDays: 90 };
+  const step = ({ newKey, paste, startable, recheckMs }: SetupView) => ({ newKey, paste, startable, recheckMs });
+  const hidden = { newKey: false, paste: false, startable: false, recheckMs: null };
+  const paste = { newKey: false, paste: true, startable: false, recheckMs: null };
+  // 'nothing' is also the visit key: this device's own key, or a fresh one, which the page fills in by itself.
+  const rows: readonly (readonly [JoinPreview, KeyEntry, ReturnType<typeof step>, RegExp, RegExp | ''])[] = [
+    [unchosen, 'nothing', hidden, /^$/, ''],
+    [down, 'key', hidden, /^$/, /can't reach Synclium Cloud \(Failed to fetch\)/],
+    [empty, 'nothing', { newKey: true, paste: true, startable: true, recheckMs: null }, /You can show it again in Settings/, /^New sync group\. 512 bookmarks will be shared\.$/],
+    [empty, 'not-a-key', paste, /isn't a sync key/, ''],
+    [empty, 'key', { ...paste, recheckMs: 10_000 }, /^No device syncs through Synclium Cloud with this key yet\..*updates by itself\.$/, ''],
+    [others, 'nothing', paste, /Show sync key/, ''],
+    [others, 'not-a-key', paste, /isn't a sync key/, ''],
+    [others, 'key', paste, /^That key doesn't match the devices in Helium Sync\.$/, ''],
+    [joining, 'key', { ...paste, startable: true }, /^The key matches\.$/, /^Joining Mac\. 498 bookmarks already match/],
+    [joining, 'nothing', { ...paste, startable: true }, /^This device's sync key matches\.$/, /^Joining Mac\./],
+    [joining, 'not-a-key', paste, /isn't a sync key/, ''],
+  ];
+  for (const [preview, entered, expected, note, sentence] of rows) {
+    const view = setupView(preview, entered);
+    const row = `${preview.kind} with ${entered}`;
+    assert.deepEqual(step(view), expected, row);
+    assert.match(view.keyNote, note, row);
+    if (sentence === '') assert.equal(view.sentence, '', row);
+    else assert.match(view.sentence, sentence, row);
+  }
+  assert.equal(previewSentence(unchosen), 'Choose where to sync first.');
+});
+
+test('a paused Synclium Cloud offers Retry, and the words name no folder', () => {
+  const busy = viewOf(shown({ ...healthy, store: { access: 'failed', label: 'Synclium Cloud', why: { kind: 'unreachable', detail: 'busy; Synclium keeps retrying' } } }));
+  assert.equal(statusSentence(busy, healthy.at), "Paused: can't reach Synclium Cloud (busy; Synclium keeps retrying).");
+  assert.deepEqual(primaryAction(busy), { label: 'Retry', opens: null });
+  const full = viewOf(shown({ ...healthy, store: { access: 'failed', label: 'Synclium Cloud', why: { kind: 'rejected', detail: 'this sync group is out of space' } } }));
+  assert.equal(statusSentence(full, healthy.at), 'Paused: Synclium Cloud refused a write (this sync group is out of space).');
+  assert.deepEqual(primaryAction(viewOf(shown({ ...healthy, store: { access: 'not-set-up' } }))), { label: 'Choose again', opens: 'app.html#setup' });
+  assert.deepEqual(storeFact({ access: 'not-set-up' }), { value: 'Not set up', detail: 'Choose where to sync in setup.' });
+  assert.equal(historyFact({ kind: 'synced', collected: 0, publishedDays: 2, unpublishedDays: 3, pulledDays: 0, deriveDaysLeft: 0 }).detail, '2 days shared from here, 3 waiting to upload.');
 });
 
 test('full profile mode types review and wait for updates in their own words', () => {

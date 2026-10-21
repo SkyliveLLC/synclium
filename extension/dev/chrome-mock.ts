@@ -14,6 +14,10 @@ const now = Date.now();
 const MIN = 60_000;
 const DAY = 86_400_000;
 
+/** This device's sync key once it is set up. Setup previews it as joining; any other key finds an empty vault. */
+const DEV_KEY = '0123456789ABCDEFGHJKMNPQRSTVWXYZ0123456789ABCDEFGHJ0' as SyncKey;
+const CLOUD = 'Synclium Cloud';
+
 /** Fake DeviceIds in the UUID shape model.ts expects. */
 const fakeId = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}` as DeviceId;
 
@@ -56,6 +60,8 @@ const SCENARIOS = {
   'needs-permission': shown({ ...healthy, store: { access: 'failed', label: 'Helium Sync', why: { kind: 'needs-permission' } } }),
   'folder-missing': shown({ ...healthy, store: { access: 'failed', label: 'Helium Sync', why: { kind: 'missing' } } }),
   'server-offline': shown({ ...healthy, store: { access: 'failed', label: 'Helium Sync on cloud.example.com', why: { kind: 'unreachable', detail: 'server error 503' } } }),
+  cloud: shown({ ...healthy, store: { access: 'ready', label: CLOUD } }),
+  'cloud-offline': shown({ ...healthy, store: { access: 'failed', label: CLOUD, why: { kind: 'unreachable', detail: 'Failed to fetch' } } }),
   review: shown({
     ...healthy,
     bookmarks: { kind: 'blocked', why: { kind: 'mass-delete', removed: { added: 0, updated: 0, removed: 212, sample: ['Recipes', 'Hacker News', 'MDN Web Docs'] }, of: 340 } },
@@ -106,7 +112,9 @@ function handle(message: UiMessage): UiReply<UiMessage> {
       setTimeout(() => publish({ ...state, report: cycle === null ? state.report : { ...cycle, at: Date.now() }, failure: null }), 1200);
       return null;
     case 'preview':
-      return { kind: 'joining', label: 'Helium Sync', peers: ['Studio iMac', 'Work laptop'], bookmarks: { matched: 498, toAdd: 14, toPublish: 37 }, historyDays: 62 };
+      return message.key === DEV_KEY
+        ? { kind: 'joining', label: CLOUD, peers: ['Studio iMac', 'Work laptop'], bookmarks: { matched: 498, toAdd: 14, toPublish: 37 }, historyDays: 62 }
+        : { kind: 'first-device', label: CLOUD, bookmarks: 512 };
     case 'start':
       setTimeout(() => publish(shown({ ...healthy, name: message.name || healthy.name, at: Date.now() })), 800);
       return { kind: 'started' };
@@ -123,7 +131,7 @@ function handle(message: UiMessage): UiReply<UiMessage> {
       return VISITS.filter((v) => q === '' || v.title.toLowerCase().includes(q) || v.url.includes(q));
     }
     case 'show-key':
-      return cycle === null ? null : ('0123456789ABCDEFGHJKMNPQRSTVWXYZ0123456789ABCDEFGHJK' as SyncKey);
+      return cycle === null ? null : DEV_KEY;
     case 'profile-status':
       return { permission: false, hello: null, error: null, on: null };
     case 'set-profile-mode':
