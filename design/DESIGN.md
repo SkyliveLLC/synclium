@@ -4,7 +4,7 @@ Synthesized design, arena round 2. Sketch in `sketch/`. `npx -y -p typescript ts
 
 ## Problem
 
-helium-sync is a Chrome Web Store extension that syncs bookmarks and history between one person's Helium browsers, with no server of ours. Conan's round-2 decisions bind it. The extension is the product. Writing Helium's profile files directly is opt-in only. Everything in the folder is encrypted with a sync key the devices share (round 3, see "Every file is sealed with one sync key"). History is the second data type.
+helium-sync is a Chrome Web Store extension that syncs bookmarks and history between one person's Helium browsers, with no server required: it syncs through storage the user already has, or through Synclium Cloud, an optional hosted store that holds only encrypted files. Conan's round-2 decisions bind it. The extension is the product. Writing Helium's profile files directly is opt-in only. Everything in the store is encrypted with a sync key the devices share (round 3, see "Every file is sealed with one sync key"). History is the second data type.
 
 Four constraints make the shape non-obvious.
 
@@ -88,14 +88,15 @@ engine.ts            sync + forget, SyncReport, JoinPreview, fetch and publish p
   bookmarks.ts       round 1 Bookmark type
   history.ts         Visit as a LogType
   store-format.ts    layout, sealed manifest, envelope, Cipher, StateFile, LogShard
-  sync-key.ts        SyncKey: mint, parse, format; cipherFor (HKDF, AES-256-GCM)
+  sync-key.ts        SyncKey: mint, parse, format; cipherFor (HKDF, AES-256-GCM); vaultTokenFor (Synclium Cloud)
   snapshot-cycle.ts  syncSnapshot: publish own snapshot, keep peers' last good (extensions)
   peer-file.ts       fetch and open one peer file against its manifest entry
   reading-list.ts    ReadingItem as a RegisterType, ids from urls
   extensions.ts      ExtensionList as a SnapshotType, offers()
   profile-mode.ts    full profile mode's contract: Setting, SearchEngine, Address types, allowlist, host protocol
   ports.ts           Store, StoreConnection, StoreFailure, channels, LocalState, LogLocal, Asks, Budget
-stores.ts            the saved StoreChoice -> connect, allow; the release StoreBackend
+stores.ts            the saved StoreChoice and the sync key -> connect, allow; the release StoreBackend
+cloud-store.ts       Synclium Cloud over fetch: choose (health check), connect, allow, cloudStore
 folder-store.ts      File System Access: choose, connect, allow, folderStore
 webdav-store.ts      WebDAV over fetch: choose, connect, allow, webdavStore
 drive-store.ts       Google Drive over fetch: sign-in, choose, connect, allow, driveStore
@@ -107,6 +108,7 @@ chrome-profile.ts    the companion link over native messaging, and ProfileChanne
 local.ts             IndexedDB schema, LocalState, LogLocal, history index, intents, store slots
 ui.ts                Protocol, ask, StatusView, actionFor, badgeFor
 companion/           opt-in file mode: link.ts (extension side), protocol.ts, host.ts
+cloud/               Synclium Cloud's server: the object API over one SQLite file, its limits, the purge
 ```
 
 ### The store is a folder, and the manifest is its commit point
@@ -136,6 +138,18 @@ Round 3, decided by Conan on 2026-10-06: a generated key rather than a passphras
 - **Integrity.** Only key holders can write a file a peer accepts. Someone who can write the folder can still delete files or restore old ones; the existing seq and rollback checks handle the second.
 
 The engine builds the cipher from `DeviceLocal.key` at the start of every cycle and from the pasted key in a preview, so `EngineDeps` no longer takes a codec.
+
+### Synclium Cloud: one vault per sync key
+
+Synclium Cloud (`cloud/` on the server, `cloud-store.ts` in the extension) is the hosted store, offered first at setup. It has no accounts. The sync key derives a 256-bit vault token under its own HKDF label (`helium-sync cloud vault v1`). The server names the vault by `sha256(token)` and never sees the key, so every device with the key finds the same vault and a joining device needs only the key. The cloud's `StoreChoice` is `{ kind: 'cloud' }` and carries nothing, so `connect` takes the sync key: the engine passes `me.key` in a cycle and in forget, and the previewed key in a preview. The key stops at `stores.ts`'s switch, and `cloud-store.ts` takes only a `VaultToken`.
+
+A key nobody has used is an empty vault, so the server cannot tell a mistyped key from a new one. Setup covers it: a typed key only ever joins (`ui.ts` `setupView`), and a preview whose store fails is `not-ready`, never `first-device`.
+
+The API is an object store at `https://synclium.skylive.world` behind `Authorization: Bearer <token>`. `GET /v1/o/<prefix>/` lists direct children as `{"names": [...]}`, and an unknown vault lists `[]`. `GET`, `PUT`, and `DELETE /v1/o/<key>` use content-hash ETags, with a 304 for a matching `If-None-Match`, and a delete succeeds whether or not the object was there. `GET /v1/health` needs no token. The server answers CORS for extension origins, so the cloud needs no host permission. To the extension, 429 and 5xx are `unreachable` and 413 and 507 are `rejected`. It is never `missing` or `needs-permission`.
+
+Limits: 8 MiB per object, 64 MiB and 4,096 objects per vault, a request bucket per client IP, 20 new vaults per IP per day, and a free-disk guard. A vault with no write for 180 days is purged. Requests are not logged.
+
+The server is a cache of what devices hold, so it heals itself. After a wipe, each device's own manifest reads as missing, and its next cycle re-puts every file it holds and the manifest at seq + 1, which peers accept. A device back after a purge has been idle past 90 days and rejoins anyway. Forget deletes a device's files from its vault right away.
 
 ### The P7 ladder picks the store
 
@@ -264,7 +278,7 @@ Candidate 1 is the base. It gives the product shape: the folder through File Sys
 
 ## Tradeoffs accepted
 
-- We accept a possible click after browser restarts (rungs B and C) in exchange for no account, no server, and no install beyond the Web Store.
+- We accept a possible click after browser restarts (rungs B and C) in exchange for no account, no server required, and no install beyond the Web Store.
 - We accept that peers' history shows only in our History tab and `hs`, not in `chrome://history` or Helium's omnibox ranking. In exchange, Helium's own history never holds fake "now" visits.
 - We accept plaintext bookmarks and history in the user's cloud folder in v1 (Conan's decision). Setup says so in one sentence.
 - We accept that history is not a register replica. It is deliberate, because owner-authored immutable facts need neither merge nor tombstones.

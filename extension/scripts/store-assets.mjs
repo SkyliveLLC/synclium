@@ -52,7 +52,7 @@ writeFileSync(
   `<!doctype html><body style="margin:0;width:440px;height:280px;display:flex;flex-direction:column;justify-content:center;gap:14px;padding:0 40px;box-sizing:border-box;background:linear-gradient(160deg,#f6f7fb,#e4eaff);font-family:system-ui,-apple-system,sans-serif;color:#1c1c1f">
     ${svg.replace('<svg ', '<svg width="64" height="64" style="display:block" ')}
     <div style="font-size:34px;font-weight:700;letter-spacing:-.02em">Synclium</div>
-    <div style="font-size:16px;color:#4b4b55;line-height:1.4">Sync Helium through a folder or WebDAV server you already have. End-to-end encrypted.</div>
+    <div style="font-size:16px;color:#4b4b55;line-height:1.4">Sync Helium through Synclium Cloud or storage you already have. End-to-end encrypted.</div>
   </body>`,
 );
 shot(`file://${tile}`, join(root, '../store/promo-tile.png'), 440, 280);
