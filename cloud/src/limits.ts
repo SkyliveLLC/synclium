@@ -16,7 +16,7 @@ export type Rate = { readonly burst: number; readonly perSecond: number };
 export type Quota = { readonly bytes: number; readonly objects: number };
 
 export type Limits = {
-  /** One object. Over it: 413. Content-Length is checked first, then the streamed count. */
+  /** One object. Over it: 413. */
   readonly objectBytes: number;
   /** One vault, every device under one sync key together: ~12 heavy devices, ~40 devices' objects. Over it: 507. */
   readonly vault: Quota;
@@ -24,9 +24,11 @@ export type Limits = {
   readonly requests: Rate;
   /** Puts into a vault with no objects, per client IP, over a rolling day. Over it: 429. */
   readonly newVaults: Rate;
-  /** Puts that grow the data answer 503 while the volume has less than this free, */
+  /**
+   * Disk guard: a put that grows the data answers 503 while the volume has less than `minFreeBytes` free or the
+   * database and its WAL pass `maxDataBytes`. Replacing with fewer bytes and deleting still work.
+   */
   readonly minFreeBytes: number;
-  /** or while the database and its WAL are larger than this. Replacing with fewer bytes and deleting still work. */
   readonly maxDataBytes: number;
   readonly diskRetryAfterS: number;
   /** Request bodies being read at once. 32 x 8 MiB bounds body memory at 256 MiB in a 512 MiB container. */
@@ -60,7 +62,7 @@ export const LIMITS: Limits = {
 
 export type Bucket = { readonly tokens: number; readonly at: number };
 
-/** The bucket after a take at `now`, and 0 when a token was spent, else the whole seconds until one is there. */
+/** `retryAfterS` is 0 when a token was spent, else the whole seconds until one is there. */
 export type Taken = { readonly bucket: Bucket; readonly retryAfterS: number };
 
 /** Spends one token from `bucket` (undefined is a new, full one) after refilling it to `now` (ms). */

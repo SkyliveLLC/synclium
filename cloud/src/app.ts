@@ -11,8 +11,6 @@
 // Authed routes answer 401 without `Authorization: Bearer <43 base64url chars>`, 400 for a key outside the
 // grammar (vaults.ts `keyOf`), and every route but health 429 + Retry-After past the client's rate.
 //
-// The server never sees the sync key: the token is a one-way HKDF output of it, and the vault is sha256(token).
-//
 // CORS: only extension origins. A request with any other Origin is refused (403) without CORS headers; one with
 // no Origin (curl, health checks) is served. Every answer to an extension origin carries the CORS headers, errors
 // included: without them Chromium hides the status, and a 507 would read as "unreachable".
@@ -40,7 +38,6 @@ export type Cloud = {
   readonly handle: (request: Request, client: Client) => Promise<Response>;
 };
 
-/** Parsed once from the method and path. Handlers take these and never look at the URL again. */
 type Route =
   | { readonly kind: 'health' }
   | { readonly kind: 'preflight' }
