@@ -34,33 +34,41 @@
       <ol class="steps">
         <li>
           <h3>Choose where to sync</h3>
-          <div id="drive" hidden>
-            <p class="note">The easiest: sign in to Google Drive on each device with the same Google account. Synclium keeps its files in a Helium Sync folder there and can't see anything else in your Drive.</p>
-            <button id="drive-connect">Use Google Drive</button>
-            <p class="note">Or use a folder you already sync with iCloud Drive, Dropbox, or Syncthing.</p>
+          <div id="cloud">
+            <p class="note">Synclium Cloud: nothing to sign up for. Your devices share only the sync key, and everything is encrypted on this device before it leaves, so Synclium can't read it.</p>
+            <button id="cloud-connect" class="primary">Use Synclium Cloud</button>
           </div>
-          <p id="folder-lead" class="note">A folder you already sync with iCloud Drive, Dropbox, or Syncthing. Each device picks the same folder.</p>
-          <button id="choose">Choose folder</button>
-          <p id="choose-note" class="note">On another device, pick the same folder, or the Helium Sync folder inside it.</p>
-          <details id="webdav">
-            <summary>Or use a WebDAV server: Nextcloud, ownCloud, Synology, Fastmail, Koofr</summary>
-            <form id="webdav-form">
-              <input id="dav-url" type="url" required placeholder="https://cloud.example.com/remote.php/dav/files/you/" autocomplete="url" aria-label="WebDAV address">
-              <input id="dav-user" type="text" required placeholder="Username" autocomplete="username" aria-label="Username">
-              <input id="dav-password" type="password" required placeholder="Password (an app password if your server has them)" autocomplete="current-password" aria-label="Password">
-              <button id="dav-connect" type="submit">Connect</button>
-            </form>
-            <p class="note">Each device enters the same address. Synclium keeps its files in a Helium Sync folder there. The password is stored unencrypted in this browser.</p>
+          <details id="own-storage">
+            <summary id="own-storage-summary">Or use storage you already have</summary>
+            <div id="drive" hidden>
+              <p class="note">Sign in to Google Drive on each device with the same Google account. Synclium keeps its files in a Helium Sync folder there and can't see anything else in your Drive.</p>
+              <button id="drive-connect">Use Google Drive</button>
+              <p class="note">Or use a folder you already sync with iCloud Drive, Dropbox, or Syncthing.</p>
+            </div>
+            <p id="folder-lead" class="note">A folder you already sync with iCloud Drive, Dropbox, or Syncthing. Each device picks the same folder.</p>
+            <button id="choose">Choose folder</button>
+            <p id="choose-note" class="note">On another device, pick the same folder, or the Helium Sync folder inside it.</p>
+            <details id="webdav">
+              <summary>Or use a WebDAV server: Nextcloud, ownCloud, Synology, Fastmail, Koofr</summary>
+              <form id="webdav-form">
+                <input id="dav-url" type="url" required placeholder="https://cloud.example.com/remote.php/dav/files/you/" autocomplete="url" aria-label="WebDAV address">
+                <input id="dav-user" type="text" required placeholder="Username" autocomplete="username" aria-label="Username">
+                <input id="dav-password" type="password" required placeholder="Password (an app password if your server has them)" autocomplete="current-password" aria-label="Password">
+                <button id="dav-connect" type="submit">Connect</button>
+              </form>
+              <p class="note">Each device enters the same address. Synclium keeps its files in a Helium Sync folder there. The password is stored unencrypted in this browser.</p>
+            </details>
           </details>
           <p id="store-label" class="note" hidden></p>
         </li>
         <li id="key-step" hidden>
           <h3>Sync key</h3>
           <div id="key-new" hidden>
-            <p class="note">Everything in the store is encrypted with this key. Save it in your password manager: your other devices need it to join.</p>
+            <p class="note">This key encrypts everything Synclium stores, and your other devices need it to join. Save it in your password manager and keep it private.</p>
             <div class="key-row"><code id="key-shown" class="key"></code><button id="key-copy">Copy</button></div>
           </div>
           <div id="key-enter" hidden>
+            <p class="note">Already syncing on another device? Paste its sync key here instead.</p>
             <input id="key-input" type="text" autocomplete="off" spellcheck="false" placeholder="HSK-…" aria-label="Sync key">
           </div>
           <p id="key-note" class="note"></p>
@@ -69,7 +77,7 @@
           <h3>Name this device</h3>
           <input id="name" type="text" maxlength="64" autocomplete="off" aria-label="Device name">
           <label class="check"><input id="history-on" type="checkbox" class="switch" checked> Sync history</label>
-          <p class="note">Bookmarks and the last 90 days of history are stored in the folder, server, or Drive, encrypted with the sync key.</p>
+          <p class="note">Bookmarks and the last 90 days of history are stored where you chose, encrypted with the sync key.</p>
           <p id="preview" class="preview" hidden></p>
           <button id="start" class="primary" disabled>Start</button>
         </li>

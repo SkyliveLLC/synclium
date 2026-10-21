@@ -1,5 +1,6 @@
 // app.html, the options page. Routes by hash, so the popup and the worker can deep-link:
-//   #setup     Google Drive, folder, or WebDAV server, sync key, device name, history choice, join preview, Start
+//   #setup     Synclium Cloud, or Google Drive, a folder, or a WebDAV server; sync key, device name, history choice,
+//              join preview, Start
 //   #allow     re-grant access after it lapsed (a folder after a restart, a revoked server permission)
 //   #status    the dashboard: status, a map of devices around the store, bookmarks/history/store facts, problems
 //   #review    a blocked mass delete and [Apply these deletions]
@@ -9,6 +10,7 @@
 //              `nativeMessaging`), forget this device
 // The folder picker, Google's sign-in window, and the permission prompts need the click's gesture, so chooseFolder,
 // chooseDrive, chooseWebdav, allowStore, and chrome.permissions.request are called synchronously in their handlers.
+// chooseCloud asks for nothing; it is called the same way.
 // Peer data (titles, urls, device names) only ever reaches the DOM as text or as an http(s) href.
 import type { JoinPreview } from './engine.ts';
 import {
@@ -21,12 +23,12 @@ import {
   folderFact,
   groupVisits,
   historyFact,
-  keyNote,
   nounFor,
   previewSentence,
   primaryAction,
   profileSentence,
   readShown,
+  setupView,
   shownFrom,
   statusSentence,
   toneOf,
@@ -41,6 +43,7 @@ import { offers, storePage } from './extensions.ts';
 import { chooseFolder } from './folder-store.ts';
 import { chooseWebdav, parseDavUrl } from './webdav-store.ts';
 import { GOOGLE_CLIENT_ID, chooseDrive } from './drive-store.ts';
+import { chooseCloud } from './cloud-store.ts';
 import { allowStore, type Chosen } from './stores.ts';
 import { slots, type StoreChoice } from './local.ts';
 import type { StoreFailure } from './ports.ts';
@@ -77,6 +80,7 @@ const onShown: (() => void)[] = [];
 // ---------- Setup ----------
 
 const setup = {
+  section: byId('setup', HTMLElement),
   choose: byId('choose', HTMLButtonElement),
   chooseNote: byId('choose-note', HTMLParagraphElement),
   storeLabel: byId('store-label', HTMLParagraphElement),
@@ -94,35 +98,46 @@ const setup = {
   result: byId('setup-result', HTMLParagraphElement),
 };
 let started: JoinPreview | null = null;
-/** The key a first device keeps. Minted once per visit; a key pasted into the field takes its place. */
-const freshKey = mintSyncKey();
+/**
+ * What setup previews while the key field is empty, read once per visit: this device's own key, so a device that
+ * moves to a store its sync group already uses joins with nothing to paste, or else a fresh one. A key typed into
+ * the field takes its place.
+ */
+const visitKey: Promise<SyncKey> = ask({ kind: 'show-key' }).then((key) => key ?? mintSyncKey());
 /** Only the newest preview renders: typing a key fires one per pause. */
 let previews = 0;
+/** setupView's recheck: a typed key whose device may still be publishing. Any newer preview replaces it. */
+let recheck: number | undefined;
 
 const copy = (key: SyncKey) => void navigator.clipboard.writeText(formatSyncKey(key));
 
 async function enterSetup(): Promise<void> {
+  window.clearTimeout(recheck);
   if (setup.name.value === '') setup.name.value = DEVICE_NAMES[parsePlatform((await chrome.runtime.getPlatformInfo()).os)];
   const typed = setup.keyInput.value.trim();
   const pasted = typed === '' ? null : parseSyncKey(typed);
-  const key = pasted ?? freshKey;
+  const key = pasted ?? (await visitKey);
   const asked = ++previews;
   const preview = await ask({ kind: 'preview', key });
   if (asked !== previews) return;
+  const view = setupView(preview, typed === '' ? 'nothing' : pasted === null ? 'not-a-key' : 'key');
   const ready = preview.kind !== 'not-ready';
-  const startable = preview.kind === 'first-device' || preview.kind === 'joining';
   setup.chooseNote.hidden = ready;
   setup.storeLabel.hidden = !ready;
   if (ready) setup.storeLabel.textContent = `Store: ${preview.label}`;
   setup.keyStep.hidden = !ready;
-  setup.keyNew.hidden = preview.kind !== 'first-device';
-  setup.keyEnter.hidden = !ready || preview.kind === 'first-device';
+  setup.keyNew.hidden = !view.newKey;
+  setup.keyEnter.hidden = !view.paste;
   setup.keyShown.textContent = formatSyncKey(key);
   setup.keyCopy.onclick = () => copy(key);
-  setup.keyNote.textContent = keyNote(preview, typed === '' ? 'nothing' : pasted === null ? 'not-a-key' : 'key');
-  setup.preview.hidden = !startable;
-  setup.preview.textContent = previewSentence(preview);
-  setup.start.disabled = !startable;
+  setup.keyNote.textContent = view.keyNote;
+  setup.preview.hidden = view.sentence === '';
+  setup.preview.textContent = view.sentence;
+  setup.start.disabled = !view.startable;
+  if (view.recheckMs !== null)
+    recheck = window.setTimeout(() => {
+      if (!setup.section.hidden) void enterSetup(); // coming back to setup previews again anyway
+    }, view.recheckMs);
   setup.start.onclick = async () => {
     setup.start.disabled = true;
     const result = await ask({ kind: 'start', name: setup.name.value, historyOn: setup.historyOn.checked, key });
@@ -131,7 +146,7 @@ async function enterSetup(): Promise<void> {
       return;
     }
     if (result.kind === 'wrong-key') {
-      await enterSetup(); // the folder gained devices under another key since the preview
+      await enterSetup(); // the store gained devices under another key since the preview
       return;
     }
     started = preview;
@@ -152,14 +167,13 @@ setup.keyInput.oninput = () => {
 };
 
 /**
- * After the picker or the Connect click. A passed probe made the choice the candidate, so the preview refreshes;
- * otherwise the note says why. `cancelled` is what to say when the user backed out, if anything.
+ * After a choose click. A passed probe made the choice the candidate, so the preview refreshes; otherwise the
+ * note says why. `cancelled` is what to say when the user backed out, if anything.
  */
 async function useChoice(choosing: Promise<Chosen>, what: string, cancelled = ''): Promise<void> {
   // One choice at a time: a second click would race the first one's probe and candidate write.
-  setup.choose.disabled = true;
-  dav.connect.disabled = true;
-  drive.connect.disabled = true;
+  const buttons = [cloud.connect, setup.choose, drive.connect, dav.connect];
+  for (const button of buttons) button.disabled = true;
   try {
     const chosen = await choosing;
     if (chosen.kind === 'cancelled') {
@@ -170,21 +184,29 @@ async function useChoice(choosing: Promise<Chosen>, what: string, cancelled = ''
       setupNote(failureText(chosen.label, chosen.probe.why));
     }
   } catch (error) {
-    setupNote(`Couldn't use that ${what}: ${messageOf(error)}`);
+    setupNote(`Couldn't use ${what}: ${messageOf(error)}`);
   } finally {
-    setup.choose.disabled = false;
-    dav.connect.disabled = false;
-    drive.connect.disabled = false;
+    for (const button of buttons) button.disabled = false;
   }
 }
 
-setup.choose.onclick = () => void useChoice(chooseFolder(), 'folder');
+/** The first option, and the primary button: one click, no prompt, no account. */
+const cloud = { connect: byId('cloud-connect', HTMLButtonElement) };
+cloud.connect.onclick = () => void useChoice(chooseCloud(), 'Synclium Cloud');
 
-/** Offered first when this build has a Google OAuth client; without one, setup reads as before. */
+setup.choose.onclick = () => void useChoice(chooseFolder(), 'that folder');
+
+/** First among the user's own storage when this build has a Google OAuth client; without one, it is not offered. */
 const drive = { box: byId('drive', HTMLDivElement), lead: byId('folder-lead', HTMLParagraphElement), connect: byId('drive-connect', HTMLButtonElement) };
 drive.box.hidden = GOOGLE_CLIENT_ID === '';
 drive.lead.hidden = !drive.box.hidden;
 drive.connect.onclick = () => void useChoice(chooseDrive(), 'Google Drive', 'Sign in to Google to sync through Google Drive.');
+// The summary names only what this build offers.
+byId('own-storage-summary', HTMLElement).textContent = `Or use storage you already have: ${new Intl.ListFormat('en', { type: 'disjunction' }).format([
+  ...(drive.box.hidden ? [] : ['Google Drive']),
+  'a synced folder',
+  'a WebDAV server',
+])}`;
 
 const dav = {
   form: byId('webdav-form', HTMLFormElement),
@@ -198,7 +220,7 @@ dav.form.onsubmit = (event) => {
   const url = parseDavUrl(dav.url.value);
   if (url === null) return setupNote('Enter the WebDAV address, starting with https://.');
   const typed = { url, username: dav.user.value, password: dav.password.value };
-  void useChoice(chooseWebdav(typed), 'server', `Synclium needs your permission to reach ${new URL(url).host}.`);
+  void useChoice(chooseWebdav(typed), 'that server', `Synclium needs your permission to reach ${new URL(url).host}.`);
 };
 
 function renderSetupResult(): void {
