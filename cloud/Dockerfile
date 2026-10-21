@@ -1,6 +1,7 @@
 # Synclium Cloud. Coolify builds this with base directory /cloud, so the context is cloud/ only. No npm install:
 # there are no runtime dependencies, and Node 24 runs the TypeScript directly.
-FROM node:24-alpine
+# Exact patch pin: 24.22.1 fixes the 2026-10-21 Node security release (Brotli RCE, TLS hostname bypasses).
+FROM node:24.22.1-alpine
 
 WORKDIR /app
 COPY package.json ./
