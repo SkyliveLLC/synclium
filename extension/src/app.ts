@@ -101,9 +101,9 @@ let started: JoinPreview | null = null;
 /**
  * What setup previews while the key field is empty, read once per visit: this device's own key, so a device that
  * moves to a store its sync group already uses joins with nothing to paste, or else a fresh one. A key typed into
- * the field takes its place.
+ * the field takes its place. Forgetting the device mints a fresh one, since the old key is no longer this device's.
  */
-const visitKey: Promise<SyncKey> = ask({ kind: 'show-key' }).then((key) => key ?? mintSyncKey());
+let visitKey: Promise<SyncKey> = ask({ kind: 'show-key' }).then((key) => key ?? mintSyncKey());
 /** Only the newest preview renders: typing a key fires one per pause. */
 let previews = 0;
 /** setupView's recheck: a typed key whose device may still be publishing. Any newer preview replaces it. */
@@ -640,6 +640,7 @@ pm.off.onclick = async () => {
 advanced.forget.onclick = async () => {
   if (!confirm('Forget this device? Its files are deleted from where you sync. Bookmarks and history in Helium stay.')) return;
   await ask({ kind: 'forget-this-device' });
+  visitKey = Promise.resolve(mintSyncKey());
   location.hash = '#setup';
 };
 
