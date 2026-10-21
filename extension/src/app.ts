@@ -10,7 +10,6 @@
 //              `nativeMessaging`), forget this device
 // The folder picker, Google's sign-in window, and the permission prompts need the click's gesture, so chooseFolder,
 // chooseDrive, chooseWebdav, allowStore, and chrome.permissions.request are called synchronously in their handlers.
-// chooseCloud asks for nothing; it is called the same way.
 // Peer data (titles, urls, device names) only ever reaches the DOM as text or as an http(s) href.
 import type { JoinPreview } from './engine.ts';
 import {
@@ -190,18 +189,16 @@ async function useChoice(choosing: Promise<Chosen>, what: string, cancelled = ''
   }
 }
 
-/** The first option, and the primary button: one click, no prompt, no account. */
 const cloud = { connect: byId('cloud-connect', HTMLButtonElement) };
 cloud.connect.onclick = () => void useChoice(chooseCloud(), 'Synclium Cloud');
 
 setup.choose.onclick = () => void useChoice(chooseFolder(), 'that folder');
 
-/** First among the user's own storage when this build has a Google OAuth client; without one, it is not offered. */
+/** Offered only when this build has a Google OAuth client. */
 const drive = { box: byId('drive', HTMLDivElement), lead: byId('folder-lead', HTMLParagraphElement), connect: byId('drive-connect', HTMLButtonElement) };
 drive.box.hidden = GOOGLE_CLIENT_ID === '';
 drive.lead.hidden = !drive.box.hidden;
 drive.connect.onclick = () => void useChoice(chooseDrive(), 'Google Drive', 'Sign in to Google to sync through Google Drive.');
-// The summary names only what this build offers.
 byId('own-storage-summary', HTMLElement).textContent = `Or use storage you already have: ${new Intl.ListFormat('en', { type: 'disjunction' }).format([
   ...(drive.box.hidden ? [] : ['Google Drive']),
   'a synced folder',

@@ -234,7 +234,6 @@ export function startWorker(backend: StoreBackend): void {
       case 'start': {
         const name = message.name.trim().slice(0, NAME_MAX) || DEVICE_NAMES[await platform()];
         const result = await withCycleLock(locks, async (): Promise<StartResult> => {
-          // The probe runs where this key will sync, the place Start is about to join.
           const conn = await backend.connect('candidate', message.key);
           if (conn.access !== 'ready') return { kind: 'not-ready', store: conn };
           const probe = await conn.store.probe();

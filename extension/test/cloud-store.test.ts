@@ -1,5 +1,5 @@
 // Synclium Cloud from the extension's side: the vault token the sync key derives, and cloud-store.ts against a
-// stub that answers the HTTP contract (synthesis "HTTP") without being a server.
+// stub that answers the HTTP contract without being a server.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
