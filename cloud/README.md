@@ -22,9 +22,10 @@ is on the container's own filesystem, because a redeploy would wipe it.
 
 ## Deploy
 
-Coolify builds `Dockerfile` from this directory on every push to `main`:
+Coolify builds `Dockerfile` from this directory on each push to `main` that changes `cloud/`:
 
-- project `synclium`, environment `production`, source `SkyliveLLC/synclium` on `main`, base directory `/cloud`
+- project `synclium`, environment `production`, source `SkyliveLLC/synclium` on `main`, base directory `/cloud`, watch
+  path `cloud/**` (set through the Coolify API; the CLI has no flag for it)
 - port 8080, domain `https://synclium.skylive.world`, health check path `/v1/health`, memory limit 512m
 - persistent storage mounted at `/data` (the database is `/data/cloud.sqlite`)
 - DNS only, not proxied: the rate limits trust the last `X-Forwarded-For` entry, which Traefik appends
