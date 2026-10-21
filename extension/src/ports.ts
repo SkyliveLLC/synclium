@@ -12,8 +12,9 @@ import type { SyncKey } from './sync-key.ts';
 // ---------- Store ----------
 
 /**
- * A dumb blob store: a folder through File System Access (folder-store.ts) or a WebDAV server
- * (webdav-store.ts), whichever setup chose (stores.ts). The whole contract:
+ * A dumb blob store: Synclium Cloud (cloud-store.ts), a folder through File System Access (folder-store.ts), a
+ * WebDAV server (webdav-store.ts), or Google Drive (drive-store.ts), whichever setup chose (stores.ts). The whole
+ * contract:
  *  - One writer per key. The layout guarantees it, so no CAS, locking, or list consistency is needed.
  *  - `put` need not be atomic. Readers verify bytes against the writer's manifest, so a torn file is "not yet".
  *  - Every method rejects only with StoreError.
@@ -44,9 +45,9 @@ export type StoreFailure =
   | { readonly kind: 'needs-permission' }
   /** The folder or the WebDAV collection was moved, renamed, or deleted. The user chooses it again in setup. */
   | { readonly kind: 'missing' }
-  /** WebDAV only: offline, or the server answered 5xx. A folder on local disk is never unreachable. */
+  /** A store over the network: offline, busy, or a 5xx. A folder on local disk is never unreachable. */
   | { readonly kind: 'unreachable'; readonly detail: string }
-  /** The store refused a write or the credentials (a folder's DOMException, a WebDAV 401, 403, or 507). */
+  /** The store refused a write or the credentials (a folder's DOMException, a WebDAV 401, 403, or 507, a full vault). */
   | { readonly kind: 'rejected'; readonly detail: string };
 
 export class StoreError extends Error {
@@ -167,7 +168,7 @@ export const noAsks: Asks = { rederiveHistory: 0, applyDeletions: 0 };
 export type Setup = {
   readonly name: string;
   readonly historyOn: boolean;
-  /** Shared by every device in the folder. Never written to the store. */
+  /** Shared by every device in the sync group. Never written to the store. */
   readonly key: SyncKey;
 };
 

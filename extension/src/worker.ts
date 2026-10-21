@@ -1,4 +1,4 @@
-// Release entry. Syncs through the folder or WebDAV server the user chose in setup (stores.ts).
+// Release entry. Syncs through the store the user chose in setup (stores.ts).
 import { startWorker } from './background.ts';
 import { releaseBackend } from './stores.ts';
 

@@ -1,7 +1,7 @@
 // The popup's view model: which state the user sees, which button it offers, and whether the badge asks for attention.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { badgeFor, bookmarksFact, historyFact, previewSentence, primaryAction, profileSentence, setupView, statusSentence, toneOf, viewOf, type KeyEntry, type SetupView, type Shown } from '../src/ui.ts';
+import { badgeFor, bookmarksFact, historyFact, previewSentence, primaryAction, profileSentence, setupView, statusSentence, storeFact, toneOf, viewOf, type KeyEntry, type SetupView, type Shown } from '../src/ui.ts';
 import type { JoinPreview, SyncReport } from '../src/engine.ts';
 import { deviceId } from './support/memory-local.ts';
 
@@ -129,6 +129,17 @@ test('setup decides the key step from the preview and the key field: a typed key
     else assert.match(view.sentence, sentence, row);
   }
   assert.equal(previewSentence(unchosen), 'Choose where to sync first.');
+});
+
+test('a paused Synclium Cloud offers Retry, and the words name no folder', () => {
+  const busy = viewOf(shown({ ...healthy, store: { access: 'failed', label: 'Synclium Cloud', why: { kind: 'unreachable', detail: 'busy, retrying in a few minutes' } } }));
+  assert.equal(statusSentence(busy, healthy.at), "Paused: can't reach Synclium Cloud (busy, retrying in a few minutes).");
+  assert.deepEqual(primaryAction(busy), { label: 'Retry', opens: null });
+  const full = viewOf(shown({ ...healthy, store: { access: 'failed', label: 'Synclium Cloud', why: { kind: 'rejected', detail: 'this sync group is out of space' } } }));
+  assert.equal(statusSentence(full, healthy.at), 'Paused: Synclium Cloud refused a write (this sync group is out of space).');
+  assert.deepEqual(primaryAction(viewOf(shown({ ...healthy, store: { access: 'not-set-up' } }))), { label: 'Choose again', opens: 'app.html#setup' });
+  assert.deepEqual(storeFact({ access: 'not-set-up' }), { value: 'Not set up', detail: 'Choose where to sync in setup.' });
+  assert.equal(historyFact({ kind: 'synced', collected: 0, publishedDays: 2, unpublishedDays: 3, pulledDays: 0, deriveDaysLeft: 0 }).detail, '2 days shared from here, 3 waiting to upload.');
 });
 
 test('full profile mode types review and wait for updates in their own words', () => {

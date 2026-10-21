@@ -6,7 +6,7 @@
 //   #review    a blocked mass delete and [Apply these deletions]
 //   #history   search over peers' visits, grouped by device and day
 //   #extensions  share this device's extensions (optional `management` permission), offers from the others
-//   #advanced  settings: history toggle, sync key, change folder or server, full profile mode (optional
+//   #advanced  settings: history toggle, sync key, change where it syncs, full profile mode (optional
 //              `nativeMessaging`), forget this device
 // The folder picker, Google's sign-in window, and the permission prompts need the click's gesture, so chooseFolder,
 // chooseDrive, chooseWebdav, allowStore, and chrome.permissions.request are called synchronously in their handlers.
@@ -20,7 +20,6 @@ import {
   ago,
   ask,
   bookmarksFact,
-  folderFact,
   groupVisits,
   historyFact,
   nounFor,
@@ -31,6 +30,7 @@ import {
   setupView,
   shownFrom,
   statusSentence,
+  storeFact,
   toneOf,
   viewOf,
   warningSentence,
@@ -333,13 +333,13 @@ function renderStatus(): void {
   status.when.textContent = report === null ? '' : `Last sync ${whenLabel(report.at)}. Checks for changes every few minutes.`;
   node(status.self, report?.name ?? 'This device', 'This device');
   const store = report?.store ?? { access: 'not-set-up' };
-  node(status.folder, store.access === 'not-set-up' ? 'No folder' : store.label, 'Sync folder');
+  node(status.folder, store.access === 'not-set-up' ? 'Not set up' : store.label, 'Synced through');
   status.folder.classList.toggle('broken', store.access !== 'ready');
 
   const peers = report?.peers ?? [];
   status.peers.replaceChildren(
     ...(peers.length === 0
-      ? [el('li', 'No other devices yet. Pick the same folder in Helium on another device.', 'empty')]
+      ? [el('li', "No other devices yet. Set up Synclium on another device: choose the same place and paste this device's sync key.", 'empty')]
       : [...peers]
           .sort((a, b) => Number(a.idle) - Number(b.idle) || b.lastSeen - a.lastSeen)
           .map((peer) => {
@@ -351,7 +351,7 @@ function renderStatus(): void {
 
   setFact(facts.bookmarks, report === null ? null : bookmarksFact(report.bookmarks));
   setFact(facts.history, report === null ? null : historyFact(report.history));
-  setFact(facts.folder, report === null ? null : folderFact(report.store));
+  setFact(facts.folder, report === null ? null : storeFact(report.store));
   status.check.hidden = report === null;
 
   const warnings = report?.warnings ?? [];
@@ -530,8 +530,8 @@ advanced.showKey.onclick = async () => {
   if (key !== null) advanced.keyCopy.onclick = () => copy(key);
 };
 advanced.history.onchange = () => void ask({ kind: 'set-history', on: advanced.history.checked });
-// Setup offers both kinds of store. Its Start joins the new one as a new device (background.ts `start`). The
-// candidate still holds the store in use, so it is cleared first: Start waits for a new choice.
+// Setup offers every store. Its Start joins the new one as a new device (background.ts `start`). The candidate
+// still holds the store in use, so it is cleared first: Start waits for a new choice.
 advanced.change.onclick = async () => {
   await slots.clearCandidate();
   location.hash = '#setup';
@@ -638,7 +638,7 @@ pm.off.onclick = async () => {
 };
 
 advanced.forget.onclick = async () => {
-  if (!confirm("Forget this device? Its files leave the sync folder. Bookmarks and history in Helium stay.")) return;
+  if (!confirm('Forget this device? Its files are deleted from where you sync. Bookmarks and history in Helium stay.')) return;
   await ask({ kind: 'forget-this-device' });
   location.hash = '#setup';
 };

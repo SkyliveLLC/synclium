@@ -122,7 +122,7 @@
           <dd><strong id="fact-history"></strong><span id="fact-history-detail"></span></dd>
         </div>
         <div>
-          <dt>Folder</dt>
+          <dt>Storage</dt>
           <dd>
             <strong id="fact-folder"></strong><span id="fact-folder-detail"></span>
             <button id="status-check" class="link-button">Check access</button>
@@ -165,23 +165,23 @@
       <div class="setting">
         <div>
           <h3>Sync history</h3>
-          <p class="note">Bookmarks and the last 90 days of history are stored in the sync folder, encrypted with the sync key.</p>
+          <p class="note">Bookmarks and the last 90 days of history are stored where you sync, encrypted with the sync key.</p>
         </div>
         <input id="adv-history" type="checkbox" class="switch" aria-label="Sync history">
       </div>
       <div class="setting">
         <div>
           <h3>Sync key</h3>
-          <p class="note">Another device needs this key to join. Anyone with it and the folder can read your bookmarks and history.</p>
+          <p class="note">Another device needs this key to join. Anyone with it can read your synced bookmarks and history, so keep it private.</p>
           <div class="key-row"><code id="adv-key" class="key" hidden></code><button id="adv-key-copy" hidden>Copy</button></div>
         </div>
         <button id="show-key">Show sync key</button>
       </div>
       <div class="setting">
         <div>
-          <h3>Sync folder or server</h3>
+          <h3>Where you sync</h3>
           <p id="adv-folder" class="note"></p>
-          <p class="note">Choosing another folder or WebDAV server joins it as a new device. Bookmarks that already match are not duplicated.</p>
+          <p class="note">Choosing again joins the new place as a new device. Bookmarks that already match are not duplicated.</p>
         </div>
         <button id="change-folder">Change</button>
       </div>
@@ -213,7 +213,7 @@
       <div class="setting">
         <div>
           <h3>Forget this device</h3>
-          <p class="note">Deletes this device's files from the sync folder and its sync state here. Bookmarks and history in Helium stay as they are.</p>
+          <p class="note">Deletes this device's files from where you sync and its sync state here. Bookmarks and history in Helium stay as they are.</p>
           <p id="device-id" class="note"></p>
         </div>
         <button id="forget" class="danger">Forget this device</button>

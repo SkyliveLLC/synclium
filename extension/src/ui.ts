@@ -3,8 +3,8 @@
 //   popup.html  status at a glance, [Sync now], and the one button the status calls for
 //   app.html    (options page, a tab) setup, status detail, history search, extensions, review, advanced
 //               (full profile mode's opt-in lives in advanced)
-// Anything that needs a user gesture (the folder picker, a folder re-grant, a WebDAV host permission, the
-// optional `management` and `nativeMessaging` grants) happens in app.html, never the popup: the picker and
+// Anything that needs a user gesture (the folder picker, a folder re-grant, a WebDAV host permission, Google's
+// sign-in, the optional `management` and `nativeMessaging` grants) happens in app.html, never the popup: the picker and
 // Chromium's permission bubbles take focus, the popup closes, and a request tied to a closed frame is cancelled.
 //
 // Status flows one way. The worker writes `Shown` to chrome.storage.local; pages render it and re-render on
@@ -24,7 +24,7 @@ export const DEVICE_NAMES = { mac: 'Mac', win: 'Windows PC', linux: 'Linux PC' }
 export type StartResult =
   | { readonly kind: 'started' }
   | { readonly kind: 'not-ready'; readonly store: StoreStatus }
-  /** Devices in the folder sync under another key. */
+  /** Devices in the store sync under another key. */
   | { readonly kind: 'wrong-key' };
 
 /** Page -> worker protocol: request fields and reply, one entry per message. Single source for both types below. */
@@ -111,8 +111,8 @@ export function storedShown(shown: Shown): { readonly [SHOWN_KEY]: Stored } {
 }
 
 /**
- * What the popup shows. One variant per thing the user can act on. The same variants cover every P7 rung and
- * WebDAV; only which failure appears, and how often, changes.
+ * What the popup shows. One variant per thing the user can act on. The same variants cover every store; only
+ * which failure appears, and how often, changes.
  */
 export type StatusView =
   | { readonly kind: 'setup' }
@@ -214,7 +214,7 @@ export function actionFor(why: StoreFailure): Action {
     case 'needs-permission':
       return { label: 'Allow access', opens: 'app.html#allow' };
     case 'missing':
-      return { label: 'Choose folder', opens: 'app.html#setup' };
+      return { label: 'Choose again', opens: 'app.html#setup' };
     case 'unreachable':
     case 'rejected':
       return { label: 'Retry', opens: null };
@@ -260,7 +260,7 @@ export function ago(ms: number): string {
 const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
 function failureSentence(label: string, why: StoreFailure): string {
-  const where = label === '' ? 'the sync folder' : label;
+  const where = label === '' ? 'where you sync' : label;
   switch (why.kind) {
     case 'needs-permission':
       return `Paused until you allow access to ${where}.`;
@@ -401,7 +401,7 @@ export function historyFact(outcome: LogOutcome): Fact {
     case 'synced': {
       const parts = [
         `${plural(outcome.publishedDays, 'day')} shared from here`,
-        outcome.unpublishedDays > 0 ? `${outcome.unpublishedDays} waiting for the folder` : '',
+        outcome.unpublishedDays > 0 ? `${outcome.unpublishedDays} waiting to upload` : '',
         outcome.pulledDays > 0 ? `${outcome.pulledDays} updated from other devices` : '',
       ];
       const detail = `${parts.filter((part) => part !== '').join(', ')}.`;
@@ -414,14 +414,14 @@ export function historyFact(outcome: LogOutcome): Fact {
   }
 }
 
-export function folderFact(store: StoreStatus): Fact {
+export function storeFact(store: StoreStatus): Fact {
   switch (store.access) {
     case 'ready':
       return { value: store.label, detail: 'Connected.' };
     case 'failed':
       return { value: store.label, detail: failureSentence(store.label, store.why) };
     case 'not-set-up':
-      return { value: 'No folder', detail: 'Choose one in setup.' };
+      return { value: 'Not set up', detail: 'Choose where to sync in setup.' };
     default: {
       const unreachable: never = store;
       return unreachable;
@@ -515,9 +515,9 @@ export function warningSentence(warning: Warning, nameOf: (device: string) => st
     case 'newer-version':
       return `${nameOf(warning.peer)} runs a newer Synclium; ${warning.file} is skipped until this one updates.`;
     case 'other-key':
-      return 'A device in the sync folder uses a different sync key. It is ignored.';
+      return 'A device syncing in the same place uses a different sync key. It is ignored.';
     case 'foreign-file':
-      return `An unexpected file "${warning.name}" is in the sync folder. It is ignored.`;
+      return `An unexpected file "${warning.name}" is among your devices' files. It is ignored.`;
     case 'rejoined':
       return 'This device was away for a long time and joined again as a new device.';
     default: {

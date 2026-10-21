@@ -239,7 +239,7 @@ export function startWorker(backend: StoreBackend): void {
           if (conn.access !== 'ready') return { kind: 'not-ready', store: conn };
           const probe = await conn.store.probe();
           if (probe.kind === 'failed') return { kind: 'not-ready', store: { access: 'failed', label: conn.label, why: probe.why } };
-          // The page only offers Start after a matching preview, but the folder may have changed since.
+          // The page only offers Start after a matching preview, but the store may have changed since.
           const preview = await (await engineFor('candidate')).sync({ preview: true, key: message.key });
           if (preview.kind === 'not-ready') return preview;
           if (preview.kind === 'needs-key') return { kind: 'wrong-key' };

@@ -106,7 +106,7 @@ try {
   const b = await device('b', 9339);
 
   const aStart = await a.start('Device A');
-  check(aStart.preview.startsWith('New sync folder'), 'A previews a new sync folder', aStart.preview);
+  check(aStart.preview.startsWith('New sync group'), 'A previews a new sync group', aStart.preview);
   check(/^HSK(-[0-9A-Z]{4}){13}$/.test(aStart.key ?? ''), 'A shows the sync key it minted', aStart.key);
   const aId = aStart.first.report.device;
   await a.worker.eval(`chrome.bookmarks.create({ parentId: '1', title: 'Shared folder' }).then((f) => chrome.bookmarks.create({ parentId: f.id, title: 'Inside A', url: 'https://example.com/inside-a' })).then(() => true)`);

@@ -11,7 +11,7 @@
 // every file against the manifest's hash before parsing, so a torn write, an iCloud placeholder, or a
 // half-synced Dropbox file reads as "not yet" and the last good copy stands.
 //
-// Every body is encrypted with the sync key (sync-key.ts). What the folder shows in the clear: device ids,
+// Every body is encrypted with the sync key (sync-key.ts). What the store shows in the clear: device ids,
 // which files exist (so which UTC days have history), their sizes, and when they change. The manifest is
 // sealed too, so device names, the file list, and lastSeen are not.
 //
@@ -260,7 +260,7 @@ export type Opened =
   | { readonly kind: 'not-yet'; readonly detail: string }
   | { readonly kind: 'newer-format'; readonly formatVersion: number }
   | { readonly kind: 'unknown-codec'; readonly codec: string }
-  /** Sealed with a different sync key: another sync group shares the folder. */
+  /** Sealed with a different sync key: another sync group shares the store. */
   | { readonly kind: 'other-key' };
 
 /**

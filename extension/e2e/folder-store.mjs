@@ -135,7 +135,7 @@ const badgeMissing = await setup.eval(`chrome.action.getBadgeText({})`);
 check(badgeMissing === '!', 'badge ! when the folder is missing');
 const popupMissing = await browser.openPage(url('popup.html'), 'popup-missing');
 const missingText = await popupMissing.eval(`document.body.innerText`);
-check(missingText.includes("Can't find Helium Sync") && missingText.includes('Choose folder'), 'popup: missing state offers Choose folder', JSON.stringify(missingText));
+check(missingText.includes("Can't find Helium Sync") && missingText.includes('Choose again'), 'popup: missing state offers Choose again', JSON.stringify(missingText));
 await popupMissing.shot(`${SHOTS}/5-popup-missing.png`);
 
 // Needs-permission: OPFS is always granted, so the report is stubbed in storage the way the worker writes it.

@@ -156,7 +156,7 @@ export type Warning =
   /** A peer runs a newer envelope format, or a newer version of a log type. Its file is skipped. */
   | { readonly kind: 'newer-version'; readonly peer: DeviceId; readonly file: string; readonly version: number }
   | { readonly kind: 'foreign-file'; readonly name: string }
-  /** A device in the folder seals with a different sync key. It is not a peer; its name is unreadable. */
+  /** A device in the store seals with a different sync key. It is not a peer; its name is unreadable. */
   | { readonly kind: 'other-key'; readonly peer: DeviceId }
   | { readonly kind: 'rejoined'; readonly previous: DeviceId };
 
